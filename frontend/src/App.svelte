@@ -1,79 +1,76 @@
 <script lang="ts">
-  import logo from './assets/images/logo-universal.png'
-  import {Greet} from '../wailsjs/go/main/App.js'
-
-  let resultText: string = "Please enter your name below 👇"
-  let name: string
-
-  function greet(): void {
-    Greet(name).then(result => resultText = result)
-  }
+  import Router from 'svelte-spa-router';
+  import Sidebar from '@/pages/Sidebar.svelte';
+  import PlayerBar from '@/pages/PlayerBar.svelte';
+  import { ChevronLeft, ChevronRight, Settings, Palette, User } from '@lucide/svelte';
+  import SearchBar from '@/components/SearchBar.svelte';
+  import routes from '@/routes';
 </script>
 
-<main>
-  <img alt="Wails logo" id="logo" src="{logo}">
-  <div class="result" id="result">{resultText}</div>
-  <div class="input-box" id="input">
-    <input autocomplete="off" bind:value={name} class="input" id="name" type="text"/>
-    <button class="btn" on:click={greet}>Greet</button>
+<div class="app-layout">
+  <div class="app-body">
+    <div class="app-sidebar">
+      <Sidebar />
+    </div>
+    <div class="app-main">
+      <div class="main-search">
+        <SearchBar />
+      </div>
+      <div class="main-routes">
+        <Router {routes} />
+      </div>
+    </div>
   </div>
-</main>
+
+  <div class="app-footer">
+    <PlayerBar />
+  </div>
+</div>
 
 <style>
-
-  #logo {
-    display: block;
-    width: 50%;
-    height: 50%;
-    margin: auto;
-    padding: 10% 0 0;
-    background-position: center;
-    background-repeat: no-repeat;
-    background-size: 100% 100%;
-    background-origin: content-box;
+  .app-layout {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .result {
-    height: 20px;
-    line-height: 20px;
-    margin: 1.5rem auto;
+  .app-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
   }
 
-  .input-box .btn {
-    width: 60px;
-    height: 30px;
-    line-height: 30px;
-    border-radius: 3px;
-    border: none;
-    margin: 0 0 0 20px;
-    padding: 0 8px;
-    cursor: pointer;
+  .app-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    overflow: hidden;
   }
 
-  .input-box .btn:hover {
-    background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%);
-    color: #333333;
+  .app-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
   }
 
-  .input-box .input {
-    border: none;
-    border-radius: 3px;
-    outline: none;
-    height: 30px;
-    line-height: 30px;
-    padding: 0 10px;
-    background-color: rgba(240, 240, 240, 1);
-    -webkit-font-smoothing: antialiased;
+  .main-search {
+    flex-shrink: 0;
+    padding: 16px 32px 0;
+    -webkit-app-region: no-drag;
   }
 
-  .input-box .input:hover {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+  .main-routes {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 32px 24px;
   }
 
-  .input-box .input:focus {
-    border: none;
-    background-color: rgba(255, 255, 255, 1);
+  .app-footer {
+    height: 80px;
+    flex-shrink: 0;
   }
-
 </style>
