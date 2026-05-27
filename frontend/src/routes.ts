@@ -4,6 +4,7 @@ import RankingPage from '@/pages/RankingPage.svelte';
 import FavoritesPage from '@/pages/FavoritesPage.svelte';
 import RecentPage from '@/pages/RecentPage.svelte';
 import LocalPage from '@/pages/LocalPage.svelte';
+import SettingsPage from '@/pages/SettingsPage.svelte';
 
 export default {
   '/': DiscoverPage,
@@ -13,4 +14,5 @@ export default {
   '/favorites': FavoritesPage,
   '/recent': RecentPage,
   '/local': LocalPage,
+  '/settings': SettingsPage,
 };
