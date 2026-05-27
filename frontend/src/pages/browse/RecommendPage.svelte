@@ -1,3 +1,6 @@
+<!--
+  推荐歌单页：歌单卡片网格（当前为演示数据，待接后端）。
+-->
 <script lang="ts">
   import { Card, Heading } from 'flowbite-svelte';
   import { ListMusic, Play } from '@lucide/svelte';

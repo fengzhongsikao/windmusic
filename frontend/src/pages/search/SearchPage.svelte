@@ -1,10 +1,14 @@
+<!--
+  搜索页：根据 URL 查询参数 q、page 调用 App.Search，支持分页与结果缓存。
+-->
 <script lang="ts">
   import { Button, Heading, Spinner } from 'flowbite-svelte';
   import { Music, Search } from '@lucide/svelte';
   import { router } from 'svelte-spa-router';
   import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
-  import { Search as searchApi, ListSources } from '../../wailsjs/go/main/App';
-  import { music } from '../../wailsjs/go/models';
+  import { playerState, togglePlayByTrack } from '@/stores/player';
+  import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
+  import { music } from '../../../wailsjs/go/models';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
 
   type SongItem = music.SongItem;
@@ -27,8 +31,8 @@
   let pageLoading = $state(false);
   let error = $state('');
   let keyword = $state('');
-  let currentSongId = $state<string | null>(null);
-  let isPlaying = $state(false);
+  let currentSongId = $derived($playerState.currentTrack.id);
+  let isPlaying = $derived($playerState.isPlaying);
   let brokenCovers = $state<Record<string, true>>({});
 
   let cachedSourceId = $state<string | null>(null);
@@ -219,13 +223,13 @@
   }
 
   function playTrack(track: TrackItem) {
-    const id = String(track.id);
-    if (currentSongId === id) {
-      isPlaying = !isPlaying;
-      return;
-    }
-    currentSongId = id;
-    isPlaying = true;
+    togglePlayByTrack({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      coverUrl: track.coverUrl,
+    });
   }
 
   function goToPage(nextPage: number) {

@@ -1,7 +1,11 @@
+<!--
+  底部播放条：播放控制、进度、音量（当前为 UI 占位，待接入真实播放器状态）。
+-->
 <script lang="ts">
   import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
+  import { playerState, togglePlayerPlayback } from '@/stores/player';
 
-  let isPlaying = $state(false);
+  let isPlaying = $derived($playerState.isPlaying);
   let currentTime = $state(0);
   let duration = $state(269);
   let volume = $state(75);
@@ -9,14 +13,10 @@
   let isShuffled = $state(false);
   let repeatMode: 'off' | 'all' | 'one' = $state('off');
 
-  let currentSong = $state({
-    title: '晴天',
-    artist: '周杰伦',
-    album: '叶惠美',
-  });
+  let currentSong = $derived($playerState.currentTrack);
 
   function togglePlay() {
-    isPlaying = !isPlaying;
+    togglePlayerPlayback();
   }
 
   function toggleMute() {
@@ -55,7 +55,11 @@
 <div class="player-bar">
   <div class="song-info">
     <div class="song-cover">
-      <Music size={24} />
+      {#if currentSong.coverUrl?.trim()}
+        <img src={currentSong.coverUrl} alt="" class="song-cover-img" />
+      {:else}
+        <Music size={24} />
+      {/if}
     </div>
     <div class="song-details">
       <div class="song-title">{currentSong.title}</div>
@@ -181,6 +185,13 @@
     justify-content: center;
     flex-shrink: 0;
     color: #999;
+  }
+
+  .song-cover-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   .song-details {

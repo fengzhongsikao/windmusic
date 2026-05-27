@@ -1,3 +1,6 @@
+<!--
+  最近播放：播放历史列表（当前为演示数据，待接播放记录存储）。
+-->
 <script lang="ts">
   import { Clock, Music, Play } from '@lucide/svelte';
 

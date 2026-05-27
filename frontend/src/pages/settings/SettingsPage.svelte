@@ -1,3 +1,6 @@
+<!--
+  设置页：洛雪自定义音源的导入、启用/禁用、删除及数据目录展示。
+-->
 <script lang="ts">
   import { Button, Toggle, Badge } from 'flowbite-svelte';
   import { FolderOpen, Plus, Settings, Trash2 } from '@lucide/svelte';
@@ -8,8 +11,8 @@
     GetSourceDataDir,
     ImportSource,
     ListSources,
-  } from '../../wailsjs/go/main/App';
-  import { music } from '../../wailsjs/go/models';
+  } from '../../../wailsjs/go/main/App';
+  import { music } from '../../../wailsjs/go/models';
 
   type SourceInfo = music.SourceInfo;
   type PlatformInfo = music.PlatformInfo;

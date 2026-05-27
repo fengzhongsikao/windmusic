@@ -1,3 +1,6 @@
+<!--
+  本地音乐：本地文件夹与曲目浏览（当前为演示数据，待接文件系统扫描）。
+-->
 <script lang="ts">
   import { FolderOpen, Music, Play, Folder } from '@lucide/svelte';
 

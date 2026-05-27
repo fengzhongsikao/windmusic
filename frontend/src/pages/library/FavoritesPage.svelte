@@ -1,3 +1,6 @@
+<!--
+  我喜欢的音乐：收藏列表（当前为演示数据，待接本地或云端收藏）。
+-->
 <script lang="ts">
   import { Heart, Music, Play, Pause } from '@lucide/svelte';
 

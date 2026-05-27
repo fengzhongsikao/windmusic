@@ -1,7 +1,7 @@
 <script lang="ts">
   import Router from 'svelte-spa-router';
-  import Sidebar from '@/pages/Sidebar.svelte';
-  import PlayerBar from '@/pages/PlayerBar.svelte';
+  import Sidebar from '@/pages/layout/Sidebar.svelte';
+  import PlayerBar from '@/pages/layout/PlayerBar.svelte';
   import { ChevronLeft, ChevronRight, Settings, Palette, User } from '@lucide/svelte';
   import SearchBar from '@/components/SearchBar.svelte';
   import routes from '@/routes';

@@ -1,8 +1,13 @@
+<!--
+  首页发现：按分类 Tab 展示推荐歌曲。
+  数据走 App.Search（与搜索页同一后端），带 session 缓存与 Tab 预取。
+-->
 <script lang="ts">
   import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
   import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
-  import { Search as searchApi, ListSources } from '../../wailsjs/go/main/App';
-  import { music } from '../../wailsjs/go/models';
+  import { playerState, togglePlayByTrack } from '@/stores/player';
+  import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
+  import { music } from '../../../wailsjs/go/models';
 
   let activeTab = $state('all');
 
@@ -32,8 +37,8 @@
   let loading = $state(false);
   let error = $state('');
 
-  let currentSongId = $state<string | null>(null);
-  let isPlaying = $state(false);
+  let currentSongId = $derived($playerState.currentTrack.id);
+  let isPlaying = $derived($playerState.isPlaying);
 
   let cachedSourceId = $state<string | null>(null);
   let recommendRequestId = 0;
@@ -70,13 +75,13 @@
   );
 
   function playTrack(track: TrackItem) {
-    const id = String(track.id);
-    if (currentSongId === id) {
-      isPlaying = !isPlaying;
-      return;
-    }
-    currentSongId = id;
-    isPlaying = true;
+    togglePlayByTrack({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      coverUrl: track.coverUrl,
+    });
   }
 
   async function runRecommend(tabId: string) {

@@ -1,3 +1,6 @@
+<!--
+  左侧导航：主导航、我的音乐、歌单列表；通过 hash 路由高亮当前项。
+-->
 <script lang="ts">
   import { Music, Home, ListMusic, Trophy, Heart, Clock, FolderOpen, CirclePlus } from '@lucide/svelte';
   import { link } from 'svelte-spa-router';

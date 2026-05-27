@@ -1,3 +1,6 @@
+<!--
+  排行榜页：榜单列表与排名趋势（当前为演示数据，待接后端）。
+-->
 <script lang="ts">
   import { Trophy, Play, TrendingUp, TrendingDown, Minus } from '@lucide/svelte';
 

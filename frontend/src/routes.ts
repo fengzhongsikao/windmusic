@@ -1,11 +1,12 @@
-import DiscoverPage from '@/pages/DiscoverPage.svelte';
-import RecommendPage from '@/pages/RecommendPage.svelte';
-import RankingPage from '@/pages/RankingPage.svelte';
-import FavoritesPage from '@/pages/FavoritesPage.svelte';
-import RecentPage from '@/pages/RecentPage.svelte';
-import LocalPage from '@/pages/LocalPage.svelte';
-import SettingsPage from '@/pages/SettingsPage.svelte';
-import SearchPage from '@/pages/SearchPage.svelte';
+/** SPA 路由表：路径 → 页面组件 */
+import DiscoverPage from '@/pages/discover/DiscoverPage.svelte';
+import RecommendPage from '@/pages/browse/RecommendPage.svelte';
+import RankingPage from '@/pages/browse/RankingPage.svelte';
+import FavoritesPage from '@/pages/library/FavoritesPage.svelte';
+import RecentPage from '@/pages/library/RecentPage.svelte';
+import LocalPage from '@/pages/library/LocalPage.svelte';
+import SettingsPage from '@/pages/settings/SettingsPage.svelte';
+import SearchPage from '@/pages/search/SearchPage.svelte';
 
 export default {
   '/': DiscoverPage,
