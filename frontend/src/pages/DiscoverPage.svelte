@@ -1,16 +1,6 @@
 <script lang="ts">
-  import {
-    Button,
-    ButtonGroup,
-    Heading,
-    Table,
-    TableBody,
-    TableBodyCell,
-    TableBodyRow,
-    TableHead,
-    TableHeadCell,
-  } from 'flowbite-svelte';
-  import { Music, Play } from '@lucide/svelte';
+  import { Button, ButtonGroup, Heading } from 'flowbite-svelte';
+  import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
 
   let activeTab = $state('all');
 
@@ -43,16 +33,27 @@
     { id: 10, title: '踏山河', artist: '是七叔呢', album: '踏山河', duration: '3:22' },
   ];
 
-  let currentSong: Song | null = $state(null);
+  const tracks = $derived<TrackItem[]>(
+    songs.map((song) => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album,
+      duration: song.duration,
+    })),
+  );
+
+  let currentSongId = $state<number | null>(null);
   let isPlaying = $state(false);
 
-  function playSong(song: Song) {
-    if (currentSong?.id === song.id) {
+  function playTrack(track: TrackItem) {
+    const id = track.id as number;
+    if (currentSongId === id) {
       isPlaying = !isPlaying;
-    } else {
-      currentSong = song;
-      isPlaying = true;
+      return;
     }
+    currentSongId = id;
+    isPlaying = true;
   }
 </script>
 
@@ -71,48 +72,12 @@
     </ButtonGroup>
   </div>
 
-  <Table hoverable striped class="song-table">
-    <TableHead>
-      <TableHeadCell class="w-12 text-center">#</TableHeadCell>
-      <TableHeadCell>标题</TableHeadCell>
-      <TableHeadCell>歌手</TableHeadCell>
-      <TableHeadCell>专辑</TableHeadCell>
-      <TableHeadCell class="text-right">时长</TableHeadCell>
-    </TableHead>
-    <TableBody>
-      {#each songs as song, index}
-        <TableBodyRow
-          class="song-row cursor-pointer {currentSong?.id === song.id ? 'playing' : ''}"
-          onclick={() => playSong(song)}
-        >
-          <TableBodyCell class="text-center text-gray-400">
-            {#if currentSong?.id === song.id && isPlaying}
-              <span class="playing-indicator" aria-hidden="true">
-                <span></span><span></span><span></span>
-              </span>
-            {:else}
-              {index + 1}
-            {/if}
-          </TableBodyCell>
-          <TableBodyCell>
-            <span class="flex items-center gap-3">
-              <span class="song-cover">
-                {#if currentSong?.id === song.id && isPlaying}
-                  <Play size={14} />
-                {:else}
-                  <Music size={14} />
-                {/if}
-              </span>
-              <span class="font-medium text-gray-800">{song.title}</span>
-            </span>
-          </TableBodyCell>
-          <TableBodyCell class="text-gray-600">{song.artist}</TableBodyCell>
-          <TableBodyCell class="text-gray-500">{song.album}</TableBodyCell>
-          <TableBodyCell class="text-right text-gray-400">{song.duration}</TableBodyCell>
-        </TableBodyRow>
-      {/each}
-    </TableBody>
-  </Table>
+  <TrackList
+    {tracks}
+    activeId={currentSongId}
+    {isPlaying}
+    onSelect={playTrack}
+  />
 </div>
 
 <style>
@@ -127,66 +92,5 @@
     margin-bottom: 24px;
     flex-wrap: wrap;
     gap: 16px;
-  }
-
-  :global(.song-table) {
-    border-radius: 12px;
-    overflow: hidden;
-  }
-
-  :global(.song-row.playing) {
-    background: rgba(102, 126, 234, 0.08) !important;
-    color: #667eea;
-  }
-
-  .song-cover {
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #f0f0f0;
-    border-radius: 6px;
-    flex-shrink: 0;
-    color: #999;
-  }
-
-  :global(.song-row.playing) .song-cover {
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
-  }
-
-  .playing-indicator {
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 14px;
-  }
-
-  .playing-indicator span {
-    width: 3px;
-    background: #667eea;
-    border-radius: 1px;
-    animation: bounce 0.8s ease-in-out infinite;
-  }
-
-  .playing-indicator span:nth-child(1) {
-    height: 60%;
-    animation-delay: 0s;
-  }
-
-  .playing-indicator span:nth-child(2) {
-    height: 100%;
-    animation-delay: 0.2s;
-  }
-
-  .playing-indicator span:nth-child(3) {
-    height: 40%;
-    animation-delay: 0.4s;
-  }
-
-  @keyframes bounce {
-    0%, 100% { transform: scaleY(1); }
-    50% { transform: scaleY(0.4); }
   }
 </style>
