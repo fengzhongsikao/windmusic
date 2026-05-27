@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { Button, ButtonGroup, Heading } from 'flowbite-svelte';
+  import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
   import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
+  import { Search as searchApi, ListSources } from '../../wailsjs/go/main/App';
+  import { music } from '../../wailsjs/go/models';
 
   let activeTab = $state('all');
 
@@ -12,42 +14,63 @@
     { id: 'electronic', label: '电子' },
   ];
 
-  interface Song {
-    id: number;
-    title: string;
-    artist: string;
-    album: string;
-    duration: string;
+  // 用和搜索页同一套后端 `App.Search` 拉取真实列表。
+  // 这里的关键词会在后端做平台搜索，并返回结果列表。
+  const CATEGORY_KEYWORDS: Record<string, string> = {
+    all: '热门',
+    chinese: '华语',
+    pop: '流行',
+    rock: '摇滚',
+    electronic: '电子',
+  };
+
+  const RECOMMEND_LIMIT = 10;
+  const CACHE_TTL_MS = 5 * 60 * 1000;
+  const CACHE_PREFIX = 'discover-recommend:';
+
+  let songs = $state<music.SongItem[]>([]);
+  let loading = $state(false);
+  let error = $state('');
+
+  let currentSongId = $state<string | null>(null);
+  let isPlaying = $state(false);
+
+  let cachedSourceId = $state<string | null>(null);
+  let recommendRequestId = 0;
+  const inFlightRequests = new Map<string, Promise<music.SongItem[]>>();
+  let hasPrefetchedTabs = false;
+
+  type RecommendCacheEntry = {
+    songs: music.SongItem[];
+    cachedAt: number;
+  };
+
+  async function resolveSourceId(): Promise<string> {
+    if (cachedSourceId) {
+      return cachedSourceId;
+    }
+    const sources = await ListSources();
+    const ready = sources.find((item) => item.enabled && item.status === 'ready');
+    if (!ready) {
+      throw new Error('请先在设置中导入并启用音源');
+    }
+    cachedSourceId = ready.id;
+    return ready.id;
   }
 
-  const songs: Song[] = [
-    { id: 1, title: '晴天', artist: '周杰伦', album: '叶惠美', duration: '4:29' },
-    { id: 2, title: '稻香', artist: '周杰伦', album: '魔杰座', duration: '3:43' },
-    { id: 3, title: '夜曲', artist: '周杰伦', album: '十一月的萧邦', duration: '4:34' },
-    { id: 4, title: '起风了', artist: '买辣椒也用券', album: '起风了', duration: '5:12' },
-    { id: 5, title: '光年之外', artist: '邓紫棋', album: '光年之外', duration: '3:52' },
-    { id: 6, title: '平凡之路', artist: '朴树', album: '猎户星座', duration: '4:46' },
-    { id: 7, title: '孤勇者', artist: '陈奕迅', album: '孤勇者', duration: '4:16' },
-    { id: 8, title: '漠河舞厅', artist: '柳爽', album: '漠河舞厅', duration: '4:38' },
-    { id: 9, title: '错位时空', artist: '艾辰', album: '错位时空', duration: '3:58' },
-    { id: 10, title: '踏山河', artist: '是七叔呢', album: '踏山河', duration: '3:22' },
-  ];
-
   const tracks = $derived<TrackItem[]>(
-    songs.map((song) => ({
+    songs.slice(0, RECOMMEND_LIMIT).map((song) => ({
       id: song.id,
-      title: song.title,
-      artist: song.artist,
+      title: song.name,
+      artist: song.singer,
       album: song.album,
-      duration: song.duration,
+      duration: song.interval ?? '—',
+      coverUrl: song.img?.trim() || undefined,
     })),
   );
 
-  let currentSongId = $state<number | null>(null);
-  let isPlaying = $state(false);
-
   function playTrack(track: TrackItem) {
-    const id = track.id as number;
+    const id = String(track.id);
     if (currentSongId === id) {
       isPlaying = !isPlaying;
       return;
@@ -55,6 +78,106 @@
     currentSongId = id;
     isPlaying = true;
   }
+
+  async function runRecommend(tabId: string) {
+    const keyword = CATEGORY_KEYWORDS[tabId] ?? CATEGORY_KEYWORDS.all;
+    const requestId = ++recommendRequestId;
+    const cacheKey = `${CACHE_PREFIX}${tabId}`;
+
+    if (typeof window !== 'undefined') {
+      const raw = window.sessionStorage.getItem(cacheKey);
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw) as RecommendCacheEntry;
+          if (Array.isArray(parsed.songs) && Date.now()- parsed.cachedAt < CACHE_TTL_MS) {
+            songs = parsed.songs;
+            error = '';
+            loading = false;
+            return;
+          }
+        } catch {
+          // ignore malformed cache and continue fetching
+        }
+      }
+    }
+
+    loading = true;
+    error = '';
+
+    try {
+      const resultSongs = await getRecommendSongs(tabId, keyword);
+      if (requestId !== recommendRequestId) return;
+      songs = resultSongs;
+    } catch (err) {
+      if (requestId !== recommendRequestId) return;
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      if (requestId !== recommendRequestId) return;
+      loading = false;
+    }
+  }
+
+  async function getRecommendSongs(tabId: string, keyword: string): Promise<music.SongItem[]> {
+    const cacheKey = `${CACHE_PREFIX}${tabId}`;
+    const existing = inFlightRequests.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const request = (async () => {
+      const sourceId = await resolveSourceId();
+      // 复用搜索后端：platform 传空表示使用音源默认平台。
+      const result = await searchApi(sourceId, '', keyword, 1);
+      const resultSongs = result.list ?? [];
+      if (typeof window !== 'undefined') {
+        const entry: RecommendCacheEntry = {
+          songs: resultSongs,
+          cachedAt: Date.now(),
+        };
+        window.sessionStorage.setItem(cacheKey, JSON.stringify(entry));
+      }
+      return resultSongs;
+    })();
+
+    inFlightRequests.set(cacheKey, request);
+    try {
+      return await request;
+    } finally {
+      inFlightRequests.delete(cacheKey);
+    }
+  }
+
+  async function prefetchAllTabs() {
+    if (hasPrefetchedTabs) {
+      return;
+    }
+    hasPrefetchedTabs = true;
+
+    for (const tab of tabs) {
+      const cacheKey = `${CACHE_PREFIX}${tab.id}`;
+      if (typeof window !== 'undefined') {
+        const raw = window.sessionStorage.getItem(cacheKey);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as RecommendCacheEntry;
+            if (Array.isArray(parsed.songs) && Date.now() - parsed.cachedAt < CACHE_TTL_MS) {
+              continue;
+            }
+          } catch {
+            // ignore malformed cache and fetch again
+          }
+        }
+      }
+      const keyword = CATEGORY_KEYWORDS[tab.id] ?? CATEGORY_KEYWORDS.all;
+      void getRecommendSongs(tab.id, keyword);
+    }
+  }
+
+  // 初次加载 + Tab 切换都会刷新推荐
+  $effect(() => {
+    void runRecommend(activeTab);
+    void prefetchAllTabs();
+  });
 </script>
 
 <div class="home-page">
@@ -72,12 +195,16 @@
     </ButtonGroup>
   </div>
 
-  <TrackList
-    {tracks}
-    activeId={currentSongId}
-    {isPlaying}
-    onSelect={playTrack}
-  />
+  {#if error}
+    <div class="recommend-error">{error}</div>
+  {:else if loading && tracks.length === 0}
+    <div class="recommend-loading">
+      <Spinner size="8" />
+      <p>正在加载推荐…</p>
+    </div>
+  {:else}
+    <TrackList {tracks} activeId={currentSongId} {isPlaying} onSelect={playTrack} />
+  {/if}
 </div>
 
 <style>
@@ -92,5 +219,21 @@
     margin-bottom: 24px;
     flex-wrap: wrap;
     gap: 16px;
+  }
+
+  .recommend-loading,
+  .recommend-error {
+    padding: 64px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    color: #999;
+    text-align: center;
+  }
+
+  .recommend-error {
+    color: #dc2626;
   }
 </style>
