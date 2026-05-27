@@ -24,11 +24,26 @@
   let limit = $state(20);
   let sourcePlatform = $state('');
   let loading = $state(false);
+  let pageLoading = $state(false);
   let error = $state('');
   let keyword = $state('');
   let currentSongId = $state<string | null>(null);
   let isPlaying = $state(false);
   let brokenCovers = $state<Record<string, true>>({});
+
+  let cachedSourceId = $state<string | null>(null);
+  let searchRequestId = 0;
+
+  type PageCacheEntry = {
+    songs: SongItem[];
+    total: number;
+    page: number;
+    limit: number;
+    sourcePlatform: string;
+  };
+
+  const PAGE_CACHE_MAX = 32;
+  const pageCache = new Map<string, PageCacheEntry>();
 
   const hasKeyword = $derived(keyword.length > 0);
   const totalPages = $derived(Math.max(1, Math.ceil(total / limit)));
@@ -52,16 +67,63 @@
     return err instanceof Error ? err.message : String(err);
   }
 
+  function pageCacheKey(sourceId: string, q: string, pageNum: number) {
+    return `${sourceId}|${q}|${pageNum}`;
+  }
+
+  function readPageCache(key: string): PageCacheEntry | undefined {
+    const entry = pageCache.get(key);
+    if (!entry) {
+      return undefined;
+    }
+    pageCache.delete(key);
+    pageCache.set(key, entry);
+    return entry;
+  }
+
+  function writePageCache(key: string, entry: PageCacheEntry) {
+    pageCache.delete(key);
+    pageCache.set(key, entry);
+    while (pageCache.size > PAGE_CACHE_MAX) {
+      const oldest = pageCache.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      pageCache.delete(oldest);
+    }
+  }
+
+  function clearPageCache() {
+    pageCache.clear();
+  }
+
+  function applySearchResult(result: SearchResult, pageNum: number) {
+    songs = result.list ?? [];
+    total = result.total ?? 0;
+    page = result.page ?? pageNum;
+    limit = result.limit ?? 20;
+    sourcePlatform = result.source ?? '';
+    brokenCovers = {};
+  }
+
   async function resolveSourceId(): Promise<string> {
+    if (cachedSourceId) {
+      return cachedSourceId;
+    }
     const sources = await ListSources();
     const ready = sources.find((item) => item.enabled && item.status === 'ready');
     if (!ready) {
       throw new Error('请先在设置中导入并启用音源');
     }
+    cachedSourceId = ready.id;
     return ready.id;
   }
 
   async function runSearch(q: string, pageNum: number) {
+    const prevKeyword = keyword;
+    const isSameQuery = q === prevKeyword && q !== '';
+    const hasExistingResults = isSameQuery && songs.length > 0;
+
     keyword = q;
     page = pageNum;
 
@@ -71,26 +133,81 @@
       sourcePlatform = '';
       error = '';
       loading = false;
+      pageLoading = false;
+      clearPageCache();
       return;
     }
 
-    loading = true;
-    error = '';
+    if (!isSameQuery) {
+      clearPageCache();
+    }
+
+    const requestId = ++searchRequestId;
+
+    let sourceId: string;
     try {
-      const sourceId = await resolveSourceId();
-      const result: SearchResult = await searchApi(sourceId, '', q, pageNum);
-      songs = result.list ?? [];
-      total = result.total ?? 0;
-      page = result.page ?? pageNum;
-      limit = result.limit ?? 20;
-      sourcePlatform = result.source ?? '';
-      brokenCovers = {};
+      sourceId = await resolveSourceId();
     } catch (err) {
+      if (requestId !== searchRequestId) {
+        return;
+      }
       songs = [];
       total = 0;
       error = errorMessage(err);
-    } finally {
       loading = false;
+      pageLoading = false;
+      return;
+    }
+
+    const platform = isSameQuery && sourcePlatform ? sourcePlatform : '';
+    const cacheKey = pageCacheKey(sourceId, q, pageNum);
+    const cached = readPageCache(cacheKey);
+    if (cached) {
+      songs = cached.songs;
+      total = cached.total;
+      page = cached.page;
+      limit = cached.limit;
+      sourcePlatform = cached.sourcePlatform;
+      error = '';
+      loading = false;
+      pageLoading = false;
+      return;
+    }
+
+    if (hasExistingResults) {
+      pageLoading = true;
+    } else {
+      loading = true;
+    }
+    error = '';
+
+    try {
+      const result: SearchResult = await searchApi(sourceId, platform, q, pageNum);
+      if (requestId !== searchRequestId) {
+        return;
+      }
+      applySearchResult(result, pageNum);
+      writePageCache(cacheKey, {
+        songs,
+        total,
+        page,
+        limit,
+        sourcePlatform,
+      });
+    } catch (err) {
+      if (requestId !== searchRequestId) {
+        return;
+      }
+      if (!hasExistingResults) {
+        songs = [];
+        total = 0;
+      }
+      error = errorMessage(err);
+    } finally {
+      if (requestId === searchRequestId) {
+        loading = false;
+        pageLoading = false;
+      }
     }
   }
 
@@ -112,7 +229,7 @@
   }
 
   function goToPage(nextPage: number) {
-    if (!keyword || nextPage < 1 || nextPage > totalPages) {
+    if (!keyword || pageLoading || nextPage < 1 || nextPage > totalPages) {
       return;
     }
     window.location.hash = buildSearchHref(keyword, nextPage);
@@ -150,12 +267,12 @@
       <Search size={48} class="text-gray-300" />
       <p>在顶部搜索框输入关键词后按 Enter</p>
     </div>
-  {:else if loading}
+  {:else if loading && songs.length === 0}
     <div class="loading-state">
       <Spinner size="8" />
       <p>正在搜索「{keyword}」…</p>
     </div>
-  {:else if error}
+  {:else if error && songs.length === 0}
     <div class="error-state">
       <p>{error}</p>
     </div>
@@ -165,28 +282,50 @@
       <p>未找到与「{keyword}」相关的歌曲</p>
     </div>
   {:else}
-    <TrackList
-      {tracks}
-      activeId={currentSongId}
-      {isPlaying}
-      {indexOffset}
-      {brokenCovers}
-      onSelect={playTrack}
-      onCoverError={markCoverBroken}
-      ariaLabel="搜索结果"
-    />
+    <div class="results-panel" class:page-loading={pageLoading}>
+      {#if pageLoading}
+        <div class="page-loading-bar" aria-hidden="true"></div>
+      {/if}
+      {#if error}
+        <p class="inline-error">{error}</p>
+      {/if}
+      <TrackList
+        {tracks}
+        activeId={currentSongId}
+        {isPlaying}
+        {indexOffset}
+        {brokenCovers}
+        onSelect={playTrack}
+        onCoverError={markCoverBroken}
+        ariaLabel="搜索结果"
+      />
 
-    {#if totalPages > 1}
-      <div class="pagination">
-        <Button color="alternative" disabled={!canPrev} onclick={() => goToPage(page - 1)}>
-          上一页
-        </Button>
-        <span class="page-info">第 {page} / {totalPages} 页</span>
-        <Button color="alternative" disabled={!canNext} onclick={() => goToPage(page + 1)}>
-          下一页
-        </Button>
-      </div>
-    {/if}
+      {#if totalPages > 1}
+        <div class="pagination">
+          <Button
+            color="alternative"
+            disabled={!canPrev || pageLoading}
+            onclick={() => goToPage(page - 1)}
+          >
+            上一页
+          </Button>
+          <span class="page-info">
+            {#if pageLoading}
+              加载中…
+            {:else}
+              第 {page} / {totalPages} 页
+            {/if}
+          </span>
+          <Button
+            color="alternative"
+            disabled={!canNext || pageLoading}
+            onclick={() => goToPage(page + 1)}
+          >
+            下一页
+          </Button>
+        </div>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -245,6 +384,42 @@
     color: #dc2626;
   }
 
+  .results-panel {
+    position: relative;
+  }
+
+  .results-panel.page-loading {
+    pointer-events: none;
+    opacity: 0.72;
+  }
+
+  .page-loading-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #667eea, transparent);
+    background-size: 200% 100%;
+    animation: page-load 0.9s ease-in-out infinite;
+    z-index: 1;
+  }
+
+  @keyframes page-load {
+    0% {
+      background-position: 200% 0;
+    }
+    100% {
+      background-position: -200% 0;
+    }
+  }
+
+  .inline-error {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #dc2626;
+  }
+
   .pagination {
     display: flex;
     align-items: center;
@@ -256,5 +431,7 @@
   .page-info {
     font-size: 14px;
     color: #666;
+    min-width: 7rem;
+    text-align: center;
   }
 </style>
