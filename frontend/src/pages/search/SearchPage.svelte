@@ -2,12 +2,12 @@
   搜索页：根据 URL 查询参数 q、page 调用 App.Search，支持分页与结果缓存。
 -->
 <script lang="ts">
-  import { Button, Heading, Spinner } from 'flowbite-svelte';
   import { Music, Search } from '@lucide/svelte';
   import { router } from 'svelte-spa-router';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import { getMetingURL, metingSourceId } from '@/lib/meting';
   import {
     player,
     setCurrentTrack,
@@ -15,7 +15,7 @@
     togglePlayByTrack,
     openImmersiveView,
   } from '@/stores/player.svelte';
-  import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
+  import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
 
@@ -23,11 +23,7 @@
   type SearchResult = music.SearchResult;
 
   const PLATFORM_LABELS: Record<string, string> = {
-    wy: '网易云音乐',
-    kw: '酷我音乐',
-    kg: '酷狗音乐',
     tx: 'QQ音乐',
-    mg: '咪咕音乐',
   };
 
   let songs = $state<SongItem[]>([]);
@@ -118,16 +114,7 @@
   }
 
   async function resolveSourceId(): Promise<string> {
-    if (cachedSourceId) {
-      return cachedSourceId;
-    }
-    const sources = await ListSources();
-    const ready = sources.find((item) => item.enabled && item.status === 'ready');
-    if (!ready) {
-      throw new Error('请先在设置中导入并启用音源');
-    }
-    cachedSourceId = ready.id;
-    return ready.id;
+    return 'builtin::network';
   }
 
   async function runSearch(q: string, pageNum: number) {
@@ -231,7 +218,8 @@
 
   function resolvePlayerTrack(track: TrackItem) {
     const song = songs.find((item) => String(item.id) === String(track.id));
-    const sourceId = cachedSourceId ?? '';
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
     return trackItemToPlayerTrack(
       track,
       buildPlaybackContext(song, sourceId, sourcePlatform),
@@ -272,7 +260,8 @@
   });
 
   $effect(() => {
-    const sourceId = cachedSourceId ?? '';
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
     setQueue(
       songs.map((song) =>
         trackItemToPlayerTrack(
@@ -293,12 +282,6 @@
 
 <div class="search-page">
   <div class="section-header">
-    <Heading tag="h2" class="text-2xl font-bold text-gray-800">
-      <span class="title-row">
-        <Search size={24} />
-        搜索
-      </span>
-    </Heading>
     {#if hasKeyword && !loading && !error}
       <p class="result-meta">
         {#if platformLabel}
@@ -316,7 +299,7 @@
     </div>
   {:else if loading && songs.length === 0}
     <div class="loading-state">
-      <Spinner size="8" />
+      <span class="loading-spinner" aria-hidden="true"></span>
       <p>正在搜索「{keyword}」…</p>
     </div>
   {:else if error && songs.length === 0}
@@ -350,13 +333,14 @@
 
       {#if totalPages > 1}
         <div class="pagination">
-          <Button
-            color="alternative"
+          <button
+            type="button"
+            class="btn pagination-button"
             disabled={!canPrev || pageLoading}
             onclick={() => goToPage(page - 1)}
           >
             上一页
-          </Button>
+          </button>
           <span class="page-info">
             {#if pageLoading}
               加载中…
@@ -364,13 +348,14 @@
               第 {page} / {totalPages} 页
             {/if}
           </span>
-          <Button
-            color="alternative"
+          <button
+            type="button"
+            class="btn pagination-button"
             disabled={!canNext || pageLoading}
             onclick={() => goToPage(page + 1)}
           >
             下一页
-          </Button>
+          </button>
         </div>
       {/if}
     </div>
@@ -395,6 +380,14 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .page-title {
+    margin: 0;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 700;
+    color: #1f2937;
   }
 
   .result-meta {
@@ -481,5 +474,25 @@
     color: #666;
     min-width: 7rem;
     text-align: center;
+  }
+
+  .loading-spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-top-color: #667eea;
+    animation: spin 0.8s linear infinite;
+  }
+
+  .pagination-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

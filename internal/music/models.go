@@ -25,17 +25,17 @@ type SourceInfo struct {
 }
 
 type SongItem struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Singer    string `json:"singer"`
-	Album     string `json:"album"`
-	AlbumID   string `json:"albumId,omitempty"`
-	Source    string `json:"source"`
-	Interval  string `json:"interval,omitempty"`
-	Img       string `json:"img,omitempty"`
-	SongMID   string `json:"songmid"`
-	Hash      string `json:"hash,omitempty"`
-	MetaJSON  string `json:"metaJson"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Singer   string `json:"singer"`
+	Album    string `json:"album"`
+	AlbumID  string `json:"albumId,omitempty"`
+	Source   string `json:"source"`
+	Interval string `json:"interval,omitempty"`
+	Img      string `json:"img,omitempty"`
+	SongMID  string `json:"songmid"`
+	Hash     string `json:"hash,omitempty"`
+	MetaJSON string `json:"metaJson"`
 }
 
 type SearchResult struct {
@@ -61,4 +61,17 @@ type MusicInfo struct {
 	Singer    string                 `json:"singer,omitempty"`
 	AlbumName string                 `json:"albumName,omitempty"`
 	Raw       map[string]interface{} `json:"-"`
+}
+
+type FavoriteSong struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Artist   string `json:"artist"`
+	Album    string `json:"album,omitempty"`
+	Duration string `json:"duration,omitempty"`
+	CoverURL string `json:"coverUrl,omitempty"`
+
+	SourceID string `json:"sourceId,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	MetaJSON string `json:"metaJson,omitempty"`
 }

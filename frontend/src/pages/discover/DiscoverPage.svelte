@@ -3,12 +3,12 @@
   数据走 App.Search（与搜索页同一后端），带 session 缓存与 Tab 预取。
 -->
 <script lang="ts">
-  import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import { getMetingURL, metingSourceId } from '@/lib/meting';
   import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
-  import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
+  import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
 
   let activeTab = $state('all');
@@ -52,16 +52,7 @@
   };
 
   async function resolveSourceId(): Promise<string> {
-    if (cachedSourceId) {
-      return cachedSourceId;
-    }
-    const sources = await ListSources();
-    const ready = sources.find((item) => item.enabled && item.status === 'ready');
-    if (!ready) {
-      throw new Error('请先在设置中导入并启用音源');
-    }
-    cachedSourceId = ready.id;
-    return ready.id;
+    return 'builtin::network';
   }
 
   const tracks = $derived<TrackItem[]>(
@@ -77,7 +68,8 @@
 
   function resolvePlayerTrack(track: TrackItem) {
     const song = songs.find((item) => String(item.id) === String(track.id));
-    const sourceId = cachedSourceId ?? '';
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
     return trackItemToPlayerTrack(track, buildPlaybackContext(song, sourceId, ''));
   }
 
@@ -195,7 +187,8 @@
   });
 
   $effect(() => {
-    const sourceId = cachedSourceId ?? '';
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
     setQueue(
       songs.map((song) =>
         trackItemToPlayerTrack(
@@ -216,24 +209,25 @@
 
 <div class="home-page">
   <div class="section-header">
-    <Heading tag="h2" class="text-2xl font-bold text-gray-800">首页</Heading>
-    <ButtonGroup>
+    <div class="tab-group">
       {#each tabs as tab}
-        <Button
-          color={activeTab === tab.id ? 'green' : 'alternative'}
+        <button
+          type="button"
+          class="tab-button"
+          class:active={activeTab === tab.id}
           onclick={() => (activeTab = tab.id)}
         >
           {tab.label}
-        </Button>
+        </button>
       {/each}
-    </ButtonGroup>
+    </div>
   </div>
 
   {#if error}
     <div class="recommend-error">{error}</div>
   {:else if loading && tracks.length === 0}
     <div class="recommend-loading">
-      <Spinner size="8" />
+      <span class="loading-spinner" aria-hidden="true"></span>
       <p>正在加载推荐…</p>
     </div>
   {:else}
@@ -255,6 +249,43 @@
     gap: 16px;
   }
 
+  .page-title {
+    margin: 0;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
+  .tab-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .tab-button {
+    border: 1px solid #d1d5db;
+    border-radius: 999px;
+    background: #fff;
+    color: #4b5563;
+    padding: 6px 14px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .tab-button:hover {
+    border-color: #aeb5c1;
+    color: #1f2937;
+  }
+
+  .tab-button.active {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.12);
+    color: #15803d;
+  }
+
   .recommend-loading,
   .recommend-error {
     padding: 64px 24px;
@@ -269,5 +300,20 @@
 
   .recommend-error {
     color: #dc2626;
+  }
+
+  .loading-spinner {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 3px solid rgba(0, 0, 0, 0.1);
+    border-top-color: #667eea;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 </style>

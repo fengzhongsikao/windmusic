@@ -5,6 +5,7 @@
   import SearchBar from '@/components/SearchBar.svelte';
   import PlayerAudioSync from '@/components/PlayerAudioSync.svelte';
   import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
+  import ToastViewport from '@/components/ToastViewport.svelte';
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/audioEngine';
 
@@ -41,6 +42,7 @@
 </div>
 
 <SongDetailDrawer />
+<ToastViewport />
 
 <div id="audio-root" class="audio-root" bind:this={audioRoot} aria-hidden="true">
   <audio bind:this={audioEl} preload="metadata"></audio>
@@ -95,6 +97,7 @@
     z-index: 110;
     height: 80px;
     flex-shrink: 0;
+    background: #f5f5f5;
   }
 
   .audio-root {

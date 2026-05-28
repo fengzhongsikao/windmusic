@@ -3,27 +3,59 @@
  */
 import {
   Search,
-  ListSources,
   GetMusicURL,
   GetLyric,
   GetPic,
+  ListFavorites,
+  AddFavorite,
+  RemoveFavorite,
+  IsFavorite,
 } from '../../wailsjs/go/main/App';
 import { music } from '../../wailsjs/go/models';
 import type { PlayerTrack } from '@/stores/player.svelte';
 import defaultCover from '@/assets/images/default.jpg';
+import { getMetingURL, metingSourceId } from '@/lib/meting';
 
 export type SongItem = music.SongItem;
 export type SearchResult = music.SearchResult;
+export type FavoriteSong = {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  duration?: string;
+  coverUrl?: string;
+  sourceId?: string;
+  platform?: string;
+  metaJson?: string;
+};
 
-export { Search, ListSources, GetMusicURL, GetLyric, GetPic };
+export { Search, GetMusicURL, GetLyric, GetPic };
+export { ListFavorites };
+
+const FAVORITES_CHANGED_EVENT = 'favorites:changed';
+
+function notifyFavoritesChanged() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
+  }
+}
+
+export function onFavoritesChanged(listener: () => void): () => void {
+  if (typeof window === 'undefined') {
+    return () => {};
+  }
+  const handler = () => listener();
+  window.addEventListener(FAVORITES_CHANGED_EVENT, handler);
+  return () => window.removeEventListener(FAVORITES_CHANGED_EVENT, handler);
+}
 
 export async function resolveReadySourceId(): Promise<string> {
-  const sources = await ListSources();
-  const ready = sources.find((item) => item.enabled && item.status === 'ready');
-  if (!ready) {
-    throw new Error('请先在设置中导入并启用音源');
+  const metingURL = getMetingURL();
+  if (metingURL) {
+    return metingSourceId(metingURL);
   }
-  return ready.id;
+  throw new Error('请先在设置中配置 Meting 源');
 }
 
 /** 通过音源获取封面 URL（网络或本地路径，由 Go 端返回） */
@@ -44,4 +76,32 @@ export async function fetchCoverUrl(track: PlayerTrack): Promise<string> {
   } catch {
     return defaultCover;
   }
+}
+
+export function toFavoriteSong(track: PlayerTrack): FavoriteSong {
+  return {
+    id: String(track.id ?? ''),
+    title: track.title ?? '',
+    artist: track.artist ?? '',
+    album: track.album ?? '',
+    duration: track.duration ?? '',
+    coverUrl: track.coverUrl ?? '',
+    sourceId: track.playback?.sourceId ?? '',
+    platform: track.playback?.platform ?? '',
+    metaJson: track.playback?.metaJson ?? '',
+  };
+}
+
+export async function checkTrackFavorite(track: PlayerTrack): Promise<boolean> {
+  return IsFavorite(toFavoriteSong(track));
+}
+
+export async function addTrackFavorite(track: PlayerTrack): Promise<void> {
+  await AddFavorite(toFavoriteSong(track));
+  notifyFavoritesChanged();
+}
+
+export async function removeTrackFavorite(track: PlayerTrack): Promise<void> {
+  await RemoveFavorite(toFavoriteSong(track));
+  notifyFavoritesChanged();
 }

@@ -28,6 +28,7 @@ export function trackItemToPlayerTrack(
     title: track.title,
     artist: track.artist,
     album: track.album,
+    duration: track.duration,
     coverUrl: track.coverUrl,
     playback,
   };

@@ -1,36 +1,159 @@
 <!--
-  我喜欢的音乐：收藏列表（当前为演示数据，待接本地或云端收藏）。
+  我喜欢的音乐：使用本地 favorites.json 数据，样式与首页列表保持一致。
 -->
 <script lang="ts">
-  import { Heart, Music, Play, Pause } from '@lucide/svelte';
+  import { onMount } from 'svelte';
+  import { Heart } from '@lucide/svelte';
+  import TrackList from '@/components/TrackList.svelte';
+  import type { TrackItem } from '@/lib/track';
+  import { ListFavorites, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
+  import type { FavoriteSong } from '@/lib/wailsPlayer';
+  import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
 
-  interface Song {
-    id: number;
-    title: string;
-    artist: string;
-    album: string;
-    duration: string;
+  let loading = $state(false);
+  let error = $state('');
+  let favorites = $state<FavoriteSong[]>([]);
+  let brokenCovers = $state<Record<string, true>>({});
+  let editMode = $state(false);
+  let selectedIds = $state<Record<string, true>>({});
+  let showDeleteDialog = $state(false);
+  let deleting = $state(false);
+
+  const tracks = $derived<TrackItem[]>(
+    favorites.map((song) => ({
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album ?? '',
+      duration: song.duration?.trim() || '—',
+      coverUrl: song.coverUrl?.trim() || undefined,
+    })),
+  );
+
+  let currentSongId = $derived(player.currentSong.id);
+
+  function playTrack(track: TrackItem) {
+    if (editMode) return;
+    const song = favorites.find((item) => String(item.id) === String(track.id));
+    togglePlayByTrack({
+      id: track.id,
+      title: track.title,
+      artist: track.artist,
+      album: track.album,
+      duration: track.duration,
+      coverUrl: track.coverUrl,
+      playback: song
+        ? {
+            sourceId: song.sourceId ?? '',
+            platform: song.platform ?? '',
+            metaJson: song.metaJson ?? '',
+          }
+        : undefined,
+    });
   }
 
-  const favorites: Song[] = [
-    { id: 1, title: '晴天', artist: '周杰伦', album: '叶惠美', duration: '4:29' },
-    { id: 3, title: '夜曲', artist: '周杰伦', album: '十一月的萧邦', duration: '4:34' },
-    { id: 5, title: '光年之外', artist: '邓紫棋', album: '光年之外', duration: '3:52' },
-    { id: 7, title: '孤勇者', artist: '陈奕迅', album: '孤勇者', duration: '4:16' },
-    { id: 10, title: '踏山河', artist: '是七叔呢', album: '踏山河', duration: '3:22' },
-  ];
+  function handleCoverError(url: string) {
+    if (!url || brokenCovers[url]) return;
+    brokenCovers = { ...brokenCovers, [url]: true };
+  }
 
-  let currentSong: Song | null = $state(null);
-  let isPlaying = $state(false);
+  function toggleSelect(track: TrackItem, selected: boolean) {
+    const id = String(track.id);
+    if (selected) {
+      selectedIds = { ...selectedIds, [id]: true };
+      return;
+    }
+    const next = { ...selectedIds };
+    delete next[id];
+    selectedIds = next;
+  }
 
-  function playSong(song: Song) {
-    if (currentSong?.id === song.id) {
-      isPlaying = !isPlaying;
-    } else {
-      currentSong = song;
-      isPlaying = true;
+  function startEdit() {
+    editMode = true;
+    selectedIds = {};
+  }
+
+  function cancelEdit() {
+    editMode = false;
+    selectedIds = {};
+    showDeleteDialog = false;
+  }
+
+  const selectedCount = $derived(Object.keys(selectedIds).length);
+
+  async function confirmDeleteSelected() {
+    if (selectedCount === 0 || deleting) return;
+    deleting = true;
+    try {
+      const targets = favorites.filter((song) => selectedIds[String(song.id)]);
+      for (const song of targets) {
+        await removeTrackFavorite({
+          id: song.id,
+          title: song.title,
+          artist: song.artist,
+          album: song.album ?? '',
+          duration: song.duration?.trim() || '—',
+          coverUrl: song.coverUrl?.trim() || undefined,
+          playback:
+            song.sourceId || song.platform || song.metaJson
+              ? {
+                  sourceId: song.sourceId ?? '',
+                  platform: song.platform ?? '',
+                  metaJson: song.metaJson ?? '',
+                }
+              : undefined,
+        });
+      }
+      showDeleteDialog = false;
+      cancelEdit();
+      await loadFavorites();
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    } finally {
+      deleting = false;
     }
   }
+
+  async function loadFavorites() {
+    loading = true;
+    error = '';
+    try {
+      favorites = await ListFavorites();
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      favorites = [];
+    } finally {
+      loading = false;
+    }
+  }
+
+  onMount(() => {
+    void loadFavorites();
+    return onFavoritesChanged(() => {
+      void loadFavorites();
+    });
+  });
+
+  $effect(() => {
+    setQueue(
+      favorites.map((song) => ({
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        album: song.album ?? '',
+        duration: song.duration?.trim() || '—',
+        coverUrl: song.coverUrl?.trim() || undefined,
+        playback:
+          song.sourceId || song.platform || song.metaJson
+            ? {
+                sourceId: song.sourceId ?? '',
+                platform: song.platform ?? '',
+                metaJson: song.metaJson ?? '',
+              }
+            : undefined,
+      })),
+    );
+  });
 </script>
 
 <div class="favorites-page">
@@ -42,41 +165,64 @@
       <h2 class="section-title">我喜欢的音乐</h2>
       <div class="song-count">{favorites.length} 首歌曲</div>
     </div>
+    <div class="header-actions">
+      {#if editMode}
+        <button type="button" class="btn action-btn" onclick={cancelEdit}>取消</button>
+        <button
+          type="button"
+          class="btn action-btn danger"
+          disabled={selectedCount === 0}
+          onclick={() => (showDeleteDialog = true)}
+        >
+          删除（{selectedCount}）
+        </button>
+      {:else}
+        <button type="button" class="btn action-btn" onclick={startEdit}>编辑</button>
+      {/if}
+    </div>
   </div>
 
-  <div class="song-list">
-    {#each favorites as song, index}
-      <button
-        class="song-row"
-        class:playing={currentSong?.id === song.id}
-        onclick={() => playSong(song)}
-      >
-        <span class="col-index">
-          {#if currentSong?.id === song.id && isPlaying}
-            <span class="playing-indicator">
-              <span></span><span></span><span></span>
-            </span>
-          {:else}
-            {index + 1}
-          {/if}
-        </span>
-        <span class="col-title">
-          <span class="song-cover">
-            {#if currentSong?.id === song.id && isPlaying}
-              <Play size={14} />
-            {:else}
-              <Music size={14} />
-            {/if}
-          </span>
-          <span class="song-name">{song.title}</span>
-        </span>
-        <span class="col-artist">{song.artist}</span>
-        <span class="col-album">{song.album}</span>
-        <span class="col-duration">{song.duration}</span>
-      </button>
-    {/each}
-  </div>
+  {#if error}
+    <div class="feedback error">{error}</div>
+  {:else if loading}
+    <div class="feedback">正在加载我喜欢的音乐…</div>
+  {:else if tracks.length === 0}
+    <div class="feedback">还没有收藏歌曲，去发现页或搜索页点亮爱心吧。</div>
+  {:else}
+    <TrackList
+      {tracks}
+      activeId={currentSongId}
+      isPlaying={player.isPlaying}
+      {brokenCovers}
+      onSelect={playTrack}
+      onCoverError={handleCoverError}
+      ariaLabel="我喜欢的音乐列表"
+      selectionMode={editMode}
+      {selectedIds}
+      onToggleSelect={toggleSelect}
+    />
+  {/if}
 </div>
+
+{#if showDeleteDialog}
+  <div class="dialog-backdrop" role="presentation">
+    <div class="alert-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-favorite-title">
+      <h3 id="delete-favorite-title">确定删除吗？</h3>
+      <p>将从我喜欢的音乐中删除已选择的歌曲。</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn action-btn" onclick={() => (showDeleteDialog = false)}>取消</button>
+        <button
+          type="button"
+          class="btn action-btn danger"
+          disabled={deleting}
+          onclick={confirmDeleteSelected}
+        >
+          {deleting ? '删除中…' : '确定删除'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .favorites-page {
@@ -92,6 +238,36 @@
     background: linear-gradient(135deg, #f093fb, #f5576c);
     border-radius: 16px;
     color: #fff;
+  }
+
+  .header-actions {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .action-btn {
+    border-radius: 999px;
+    border: none;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .action-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .action-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .action-btn.danger {
+    background: rgba(220, 38, 38, 0.85);
   }
 
   .header-icon {
@@ -115,133 +291,63 @@
     opacity: 0.8;
   }
 
-  .song-list {
+  .feedback {
+    padding: 64px 24px;
+    text-align: center;
+    color: #999;
     border-radius: 12px;
-    overflow: hidden;
     background: #fafafa;
   }
 
-  .song-row {
-    display: grid;
-    grid-template-columns: 50px 1fr 140px 160px 80px;
-    padding: 12px 16px;
-    border: none;
-    background: transparent;
-    color: #666;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    text-align: left;
-    width: 100%;
-    align-items: center;
+  .feedback.error {
+    color: #dc2626;
   }
 
-  .song-row:nth-child(even) {
-    background: rgba(0, 0, 0, 0.01);
-  }
-
-  .song-row:hover {
-    background: rgba(0, 0, 0, 0.04);
-  }
-
-  .song-row.playing {
-    background: rgba(102, 126, 234, 0.08);
-    color: #667eea;
-  }
-
-  .col-index {
-    font-size: 13px;
-    color: #ccc;
-    text-align: center;
-  }
-
-  .song-row.playing .col-index {
-    color: #667eea;
-  }
-
-  .col-title {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    overflow: hidden;
-  }
-
-  .song-cover {
-    width: 36px;
-    height: 36px;
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #f0f0f0;
-    border-radius: 6px;
-    flex-shrink: 0;
-    color: #999;
+    z-index: 50;
+    padding: 16px;
   }
 
-  .song-row.playing .song-cover {
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.1);
+  .alert-dialog {
+    width: min(420px, 100%);
+    border-radius: 14px;
+    background: #fff;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
   }
 
-  .song-name {
-    font-weight: 500;
-    color: #333;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .alert-dialog h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #111827;
   }
 
-  .col-artist {
-    color: #666;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .alert-dialog p {
+    margin: 8px 0 0;
+    color: #4b5563;
+    font-size: 14px;
   }
 
-  .col-album {
-    color: #999;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  .dialog-actions {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
   }
 
-  .col-duration {
-    color: #ccc;
-    text-align: right;
-    font-size: 13px;
+  .dialog-actions .action-btn {
+    background: #f3f4f6;
+    color: #374151;
   }
 
-  .playing-indicator {
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 14px;
-  }
-
-  .playing-indicator span {
-    width: 3px;
-    background: #667eea;
-    border-radius: 1px;
-    animation: bounce 0.8s ease-in-out infinite;
-  }
-
-  .playing-indicator span:nth-child(1) {
-    height: 60%;
-    animation-delay: 0s;
-  }
-
-  .playing-indicator span:nth-child(2) {
-    height: 100%;
-    animation-delay: 0.2s;
-  }
-
-  .playing-indicator span:nth-child(3) {
-    height: 40%;
-    animation-delay: 0.4s;
-  }
-
-  @keyframes bounce {
-    0%, 100% { transform: scaleY(1); }
-    50% { transform: scaleY(0.4); }
+  .dialog-actions .action-btn.danger {
+    background: #dc2626;
+    color: #fff;
   }
 </style>

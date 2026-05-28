@@ -2,6 +2,7 @@
   底部播放条：播放控制、进度、音量（当前为 UI 占位，待接入真实播放器状态）。
 -->
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
   import {
     player,
@@ -14,7 +15,7 @@
     setPlayerVolume,
     togglePlayerMuted,
   } from '@/stores/player.svelte';
-  import { fetchCoverUrl } from '@/lib/wailsPlayer';
+  import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
   import {
     audioCurrentTime,
@@ -22,6 +23,8 @@
     seekAudio,
     setAudioVolume,
   } from '@/stores/audioEngine';
+  import VolumeSlider from '@/components/VolumeSlider.svelte';
+  import ProgressSlider from '@/components/ProgressSlider.svelte';
 
   /** 仅打开详情页时切换沉浸式配色，单纯播放不变 */
   let barImmersive = $derived(player.viewMode === 'immersive');
@@ -32,8 +35,12 @@
   let duration = $derived($audioDuration);
   let volume = $derived(player.volume);
   let isMuted = $derived(player.isMuted);
+  let volumeDisplay = $derived(`${isMuted ? 0 : volume}%`);
   let isShuffled = $derived(player.isShuffled);
   let repeatMode = $derived(player.repeatMode);
+  let isFavorite = $state(false);
+  let favoritePending = $state(false);
+  let favoriteCheckToken = 0;
 
   function togglePlay() {
     togglePlayerPlayback();
@@ -53,7 +60,7 @@
 
   function handleBarClick(e: MouseEvent) {
     const target = e.target as HTMLElement;
-    if (target.closest('button, [role="slider"], a, input')) {
+    if (target.closest('button, a, input, .skeleton-slider')) {
       return;
     }
     openImmersiveView();
@@ -63,47 +70,65 @@
     cycleRepeatMode();
   }
 
+  async function refreshFavoriteState(track = player.currentSong) {
+    const token = ++favoriteCheckToken;
+    try {
+      const liked = await checkTrackFavorite(track);
+      if (token === favoriteCheckToken) {
+        isFavorite = liked;
+      }
+    } catch (error) {
+      if (token === favoriteCheckToken) {
+        isFavorite = false;
+      }
+      console.error('[播放器] 查询收藏状态失败', error);
+    }
+  }
+
+  async function toggleFavorite() {
+    if (favoritePending) return;
+    favoritePending = true;
+    const track = player.currentSong;
+    try {
+      if (isFavorite) {
+        await removeTrackFavorite(track);
+        isFavorite = false;
+      } else {
+        await addTrackFavorite(track);
+        isFavorite = true;
+      }
+    } catch (error) {
+      console.error('[播放器] 更新收藏失败', error);
+    } finally {
+      favoritePending = false;
+    }
+  }
+
   function formatTime(seconds: number): string {
     const min = Math.floor(seconds / 60);
     const sec = Math.floor(seconds % 60);
     return `${min}:${sec.toString().padStart(2, '0')}`;
   }
 
-  function handleProgressClick(e: MouseEvent) {
+  function handleProgressInput(seconds: number) {
     if (duration <= 0) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
-    seekAudio(percent * duration);
-  }
-
-  function handleProgressKeydown(e: KeyboardEvent) {
-    if (duration <= 0) return;
-    const step = 5;
-    switch (e.key) {
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        e.preventDefault();
-        seekAudio(Math.max(0, currentTime - step));
-        break;
-      case 'ArrowRight':
-      case 'ArrowUp':
-        e.preventDefault();
-        seekAudio(Math.min(duration, currentTime + step));
-        break;
-      case 'Home':
-        e.preventDefault();
-        seekAudio(0);
-        break;
-      case 'End':
-        e.preventDefault();
-        seekAudio(duration);
-        break;
-    }
+    seekAudio(seconds);
   }
 
   $effect(() => {
     setAudioVolume(player.volume, player.isMuted);
   });
+
+  $effect(() => {
+    const track = player.currentSong;
+    void refreshFavoriteState(track);
+  });
+
+  onMount(() =>
+    onFavoritesChanged(() => {
+      void refreshFavoriteState(player.currentSong);
+    })
+  );
 
   $effect(() => {
     const target = coverSrc;
@@ -132,33 +157,12 @@
     };
   });
 
-  function handleVolumeClick(e: MouseEvent) {
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setPlayerVolume(((e.clientX - rect.left) / rect.width) * 100);
+  function handleVolumeInput(next: number) {
+    setPlayerVolume(next, { persist: false });
   }
 
-  function handleVolumeKeydown(e: KeyboardEvent) {
-    const step = 5;
-    switch (e.key) {
-      case 'ArrowLeft':
-      case 'ArrowDown':
-        e.preventDefault();
-        setPlayerVolume(player.volume - step);
-        break;
-      case 'ArrowRight':
-      case 'ArrowUp':
-        e.preventDefault();
-        setPlayerVolume(player.volume + step);
-        break;
-      case 'Home':
-        e.preventDefault();
-        setPlayerVolume(0);
-        break;
-      case 'End':
-        e.preventDefault();
-        setPlayerVolume(100);
-        break;
-    }
+  function handleVolumeChange(next: number) {
+    setPlayerVolume(next, { persist: true });
   }
 </script>
 
@@ -208,7 +212,15 @@
       </button>
       <div class="song-artist">{player.currentSong.artist}</div>
     </div>
-    <button type="button" class="like-btn" title="喜欢">
+    <button
+      type="button"
+      class="like-btn"
+      class:active={isFavorite}
+      disabled={favoritePending}
+      onclick={toggleFavorite}
+      title={isFavorite ? '取消喜欢' : '喜欢'}
+      aria-label={isFavorite ? '取消喜欢' : '喜欢'}
+    >
       <Heart size={18} />
     </button>
   </div>
@@ -252,27 +264,14 @@
 
     <div class="progress-section">
       <span class="time">{formatTime(currentTime)}</span>
-      <div
-        class="progress-bar"
-        role="slider"
-        tabindex="0"
-        aria-label="播放进度"
-        aria-valuemin={0}
-        aria-valuemax={duration}
-        aria-valuenow={currentTime}
-        aria-valuetext={formatTime(currentTime)}
-        onclick={handleProgressClick}
-        onkeydown={handleProgressKeydown}
-      >
-        <div class="progress-bg">
-          <div
-            class="progress-fill"
-            style="width: {duration > 0 ? (currentTime / duration) * 100 : 0}%"
-          >
-            <div class="progress-thumb"></div>
-          </div>
-        </div>
-      </div>
+      <ProgressSlider
+        value={currentTime}
+        max={duration > 0 ? duration : 1}
+        step={0.1}
+        disabled={duration <= 0}
+        ariaLabel="播放进度"
+        oninput={handleProgressInput}
+      />
       <span class="time">{formatTime(duration)}</span>
     </div>
   </div>
@@ -302,25 +301,14 @@
           <Volume size={16} />
         {/if}
       </button>
-      <div
-        class="volume-bar"
-        role="slider"
-        tabindex="0"
-        aria-label="音量"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={isMuted ? 0 : volume}
-        aria-valuetext={isMuted ? '静音' : `${volume}%`}
-        onclick={handleVolumeClick}
-        onkeydown={handleVolumeKeydown}
-      >
-        <div class="volume-bg">
-          <div
-            class="volume-fill"
-            style="width: {isMuted ? 0 : volume}%"
-          ></div>
-        </div>
-      </div>
+      <VolumeSlider
+        value={volume}
+        muted={isMuted}
+        playing={player.isPlaying}
+        oninput={handleVolumeInput}
+        onchange={handleVolumeChange}
+      />
+      <span class="volume-percent" aria-label={`当前音量 ${volumeDisplay}`}>{volumeDisplay}</span>
     </div>
   </div>
   </div>
@@ -415,26 +403,6 @@
     color: rgba(255, 255, 255, 0.45);
   }
 
-  .player-bar.immersive .progress-bg {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .player-bar.immersive .progress-fill {
-    background: #3ecf6e;
-  }
-
-  .player-bar.immersive .progress-thumb {
-    background: #fff;
-  }
-
-  .player-bar.immersive .volume-bg {
-    background: rgba(255, 255, 255, 0.15);
-  }
-
-  .player-bar.immersive .volume-fill {
-    background: rgba(255, 255, 255, 0.55);
-  }
-
   .song-info {
     display: flex;
     align-items: center;
@@ -522,6 +490,14 @@
     color: #e74c3c;
   }
 
+  .like-btn.active {
+    color: #e74c3c;
+  }
+
+  .like-btn.active :global(svg) {
+    fill: currentColor;
+  }
+
   .player-controls {
     display: flex;
     flex-direction: column;
@@ -584,50 +560,17 @@
     max-width: 500px;
   }
 
+  .progress-section :global(.skeleton-slider) {
+    flex: 1;
+    min-width: 0;
+  }
+
   .time {
     font-size: 11px;
     color: #999;
     min-width: 35px;
     text-align: center;
     font-variant-numeric: tabular-nums;
-  }
-
-  .progress-bar {
-    flex: 1;
-    cursor: pointer;
-    padding: 4px 0;
-  }
-
-  .progress-bg {
-    height: 4px;
-    background: #e0e0e0;
-    border-radius: 2px;
-    position: relative;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background: #667eea;
-    border-radius: 2px;
-    position: relative;
-    transition: width 0.1s linear;
-  }
-
-  .progress-thumb {
-    width: 12px;
-    height: 12px;
-    background: #667eea;
-    border-radius: 50%;
-    position: absolute;
-    right: -6px;
-    top: -4px;
-    opacity: 0;
-    transition: opacity 0.15s;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-  }
-
-  .progress-bar:hover .progress-thumb {
-    opacity: 1;
   }
 
   .extra-controls {
@@ -643,22 +586,21 @@
     gap: 4px;
   }
 
-  .volume-bar {
-    width: 80px;
-    cursor: pointer;
-    padding: 4px 0;
+  .volume-control :global(.skeleton-slider) {
+    width: 88px;
+    flex-shrink: 0;
   }
 
-  .volume-bg {
-    height: 4px;
-    background: #e0e0e0;
-    border-radius: 2px;
+  .volume-percent {
+    width: 38px;
+    text-align: right;
+    font-size: 11px;
+    color: #888;
+    font-variant-numeric: tabular-nums;
   }
 
-  .volume-fill {
-    height: 100%;
-    background: #667eea;
-    border-radius: 2px;
-    transition: width 0.1s;
+  .player-bar.immersive .volume-percent {
+    color: rgba(255, 255, 255, 0.62);
   }
+
 </style>

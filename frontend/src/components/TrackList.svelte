@@ -12,6 +12,9 @@
     onOpenDetail?: (track: TrackItem) => void;
     onCoverError?: (url: string) => void;
     ariaLabel?: string;
+    selectionMode?: boolean;
+    selectedIds?: Record<string, true>;
+    onToggleSelect?: (track: TrackItem, selected: boolean) => void;
   }
 
   let {
@@ -24,6 +27,9 @@
     onOpenDetail,
     onCoverError,
     ariaLabel = '歌曲列表',
+    selectionMode = false,
+    selectedIds = {},
+    onToggleSelect,
   }: Props = $props();
 
   function handleOpenDetail(e: MouseEvent, track: TrackItem) {
@@ -46,7 +52,10 @@
 </script>
 
 <div class="track-list" role="table" aria-label={ariaLabel}>
-  <div class="track-list-header" role="row">
+  <div class="track-list-header" class:selection-mode={selectionMode} role="row">
+    {#if selectionMode}
+      <span class="col-select" role="columnheader"></span>
+    {/if}
     <span class="col-index" role="columnheader">序号</span>
     <span class="col-track" role="columnheader">歌曲</span>
     <span class="col-album" role="columnheader">专辑</span>
@@ -57,16 +66,33 @@
     <div
       class="track-row"
       class:active={isActive(track)}
+      class:selection-mode={selectionMode}
       role="row"
       tabindex="0"
-      onclick={() => onSelect?.(track)}
+      onclick={() => {
+        if (!selectionMode) {
+          onSelect?.(track);
+        }
+      }}
       onkeydown={(e) => {
+        if (selectionMode) return;
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onSelect?.(track);
         }
       }}
     >
+      {#if selectionMode}
+        <span class="col-select" role="cell">
+          <input
+            type="checkbox"
+            checked={Boolean(selectedIds[String(track.id)])}
+            aria-label={`选择 ${track.title}`}
+            onclick={(e) => e.stopPropagation()}
+            oninput={(e) => onToggleSelect?.(track, (e.currentTarget as HTMLInputElement).checked)}
+          />
+        </span>
+      {/if}
       <span class="col-index" role="cell">
         {#if isActive(track) && isPlaying}
           <span class="playing-indicator" aria-hidden="true">
@@ -136,6 +162,24 @@
     column-gap: 1rem;
     padding: 0.75rem 1rem;
     text-align: left;
+  }
+
+  .track-list-header.selection-mode,
+  .track-row.selection-mode {
+    grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 28%) 4.5rem;
+  }
+
+  .col-select {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .col-select input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: #667eea;
+    cursor: pointer;
   }
 
   .track-list-header {

@@ -1,5 +1,33 @@
 export namespace music {
 	
+	export class FavoriteSong {
+	    id: string;
+	    title: string;
+	    artist: string;
+	    album?: string;
+	    duration?: string;
+	    coverUrl?: string;
+	    sourceId?: string;
+	    platform?: string;
+	    metaJson?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FavoriteSong(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.artist = source["artist"];
+	        this.album = source["album"];
+	        this.duration = source["duration"];
+	        this.coverUrl = source["coverUrl"];
+	        this.sourceId = source["sourceId"];
+	        this.platform = source["platform"];
+	        this.metaJson = source["metaJson"];
+	    }
+	}
 	export class LyricInfo {
 	    lyric: string;
 	    tlyric?: string;
@@ -16,24 +44,6 @@ export namespace music {
 	        this.tlyric = source["tlyric"];
 	        this.rlyric = source["rlyric"];
 	        this.lxlyric = source["lxlyric"];
-	    }
-	}
-	export class PlatformInfo {
-	    key: string;
-	    name: string;
-	    actions: string[];
-	    qualities: string[];
-	
-	    static createFrom(source: any = {}) {
-	        return new PlatformInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.key = source["key"];
-	        this.name = source["name"];
-	        this.actions = source["actions"];
-	        this.qualities = source["qualities"];
 	    }
 	}
 	export class SongItem {
@@ -86,60 +96,6 @@ export namespace music {
 	        this.page = source["page"];
 	        this.limit = source["limit"];
 	        this.source = source["source"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
-	}
-	
-	export class SourceInfo {
-	    id: string;
-	    name: string;
-	    description: string;
-	    version: string;
-	    author: string;
-	    homepage: string;
-	    filename: string;
-	    enabled: boolean;
-	    platforms: PlatformInfo[];
-	    // Go type: time
-	    importedAt: any;
-	    status: string;
-	    error?: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SourceInfo(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.description = source["description"];
-	        this.version = source["version"];
-	        this.author = source["author"];
-	        this.homepage = source["homepage"];
-	        this.filename = source["filename"];
-	        this.enabled = source["enabled"];
-	        this.platforms = this.convertValues(source["platforms"], PlatformInfo);
-	        this.importedAt = this.convertValues(source["importedAt"], null);
-	        this.status = source["status"];
-	        this.error = source["error"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

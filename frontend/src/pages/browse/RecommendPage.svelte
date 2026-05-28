@@ -2,7 +2,6 @@
   推荐歌单页：歌单卡片网格（当前为演示数据，待接后端）。
 -->
 <script lang="ts">
-  import { Card, Heading } from 'flowbite-svelte';
   import { ListMusic, Play } from '@lucide/svelte';
 
   const playlists = [
@@ -16,11 +15,11 @@
 </script>
 
 <div class="recommend-page">
-  <Heading tag="h2" class="mb-6 text-2xl font-bold text-gray-800">推荐歌单</Heading>
+  <h2 class="page-title">推荐歌单</h2>
 
   <div class="playlist-grid">
     {#each playlists as pl}
-      <Card class="playlist-card overflow-hidden !p-0">
+      <article class="playlist-card">
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
         <div class="playlist-inner" onclick={() => {}}>
           <div
@@ -38,25 +37,36 @@
             <div class="playlist-count">{pl.count} 首</div>
           </div>
         </div>
-      </Card>
+      </article>
     {/each}
   </div>
 </div>
 
 <style>
+  .page-title {
+    margin: 0 0 24px;
+    font-size: 1.5rem;
+    line-height: 2rem;
+    font-weight: 700;
+    color: #1f2937;
+  }
+
   .playlist-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
     gap: 20px;
   }
 
-  :global(.playlist-card) {
+  .playlist-card {
     border: none;
     box-shadow: none;
     transition: transform 0.2s, box-shadow 0.2s;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
   }
 
-  :global(.playlist-card:hover) {
+  .playlist-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
   }

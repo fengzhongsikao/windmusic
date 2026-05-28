@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { Button, Input } from 'flowbite-svelte';
   import { Search, Settings, X } from '@lucide/svelte';
   import { link, push, router } from 'svelte-spa-router';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
@@ -42,31 +41,28 @@
 <div class="search-bar-row">
   <form class="search-form" onsubmit={(e) => { e.preventDefault(); submitSearch(); }}>
     <div class="search-input-wrap">
-      <Input
+      <div class="search-input">
+        <Search size={18} style="position:absolute;left:10px;color:#9ca3af;pointer-events:none;" />
+        <input
         type="text"
         bind:value={searchQuery}
         placeholder="搜索音乐、歌手、专辑..."
-        class="w-full ps-9"
+        class="search-input-field"
         onkeydown={handleKeydown}
-      >
-        {#snippet left()}
-          <Search size={18} class="text-gray-400" />
-        {/snippet}
-        {#snippet right()}
-          {#if searchQuery}
-            <button
-              type="button"
-              class="clear-btn"
-              onclick={clearSearch}
-              aria-label="清除搜索"
-            >
-              <X size={16} />
-            </button>
-          {/if}
-        {/snippet}
-      </Input>
+      />
+        {#if searchQuery}
+          <button
+            type="button"
+            class="clear-btn"
+            onclick={clearSearch}
+            aria-label="清除搜索"
+          >
+            <X size={16} />
+          </button>
+        {/if}
+      </div>
     </div>
-    <Button type='submit' color='blue'>搜索</Button>
+    <button type="submit" class="btn preset-filled-success-500">搜索</button>
   </form>
   <a href="/settings" use:link class="settings-btn" aria-label="设置" title="设置">
     <Settings size={20} />
@@ -94,6 +90,30 @@
     min-width: 0;
   }
 
+  .search-input {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+  }
+
+  .search-input-field {
+    width: 100%;
+    height: 40px;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    padding: 0 34px 0 34px;
+    background: #fff;
+    color: #111827;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .search-input-field:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  }
+
   .clear-btn {
     display: flex;
     align-items: center;
@@ -105,6 +125,8 @@
     color: #666;
     cursor: pointer;
     transition: all 0.2s ease;
+    position: absolute;
+    right: 8px;
   }
 
   .clear-btn:hover {
@@ -129,4 +151,5 @@
     background: rgba(0, 0, 0, 0.04);
     color: #667eea;
   }
+
 </style>

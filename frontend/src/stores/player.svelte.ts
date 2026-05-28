@@ -9,13 +9,16 @@ export type PlaybackContext = {
   metaJson: string;
 };
 
-export type PlayerTrack = Pick<TrackItem, 'id' | 'title' | 'artist' | 'album' | 'coverUrl'> & {
+export type PlayerTrack = Pick<
+  TrackItem,
+  'id' | 'title' | 'artist' | 'album' | 'duration' | 'coverUrl'
+> & {
   playback?: PlaybackContext;
 };
 
 export type RepeatMode = 'off' | 'all' | 'one';
 
-const DEFAULT_VOLUME = 75;
+const DEFAULT_VOLUME = 30;
 const SETTINGS_KEY = 'windmusic:player-settings';
 
 function sameTrack(a: PlayerTrack, b: PlayerTrack): boolean {
@@ -72,6 +75,7 @@ export const player = $state({
     title: '在银河中孤独摇摆',
     artist: '知更鸟 / HOYO-MiX',
     album: '未知专辑',
+    duration: '—',
     coverUrl: defaultCover,
   } as PlayerTrack,
   isPlaying: false,
@@ -205,12 +209,14 @@ export function cycleRepeatMode() {
   persistSettings();
 }
 
-export function setPlayerVolume(volume: number) {
+export function setPlayerVolume(volume: number, options?: { persist?: boolean }) {
   player.volume = Math.min(100, Math.max(0, Math.round(volume)));
   if (player.volume > 0) {
     player.isMuted = false;
   }
-  persistSettings();
+  if (options?.persist !== false) {
+    persistSettings();
+  }
 }
 
 export function togglePlayerMuted() {

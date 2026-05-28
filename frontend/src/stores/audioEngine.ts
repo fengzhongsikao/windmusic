@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import { GetMusicURL } from '../../wailsjs/go/main/App';
 import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/player.svelte';
 import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
+import { error as errorToast } from '@/stores/toast';
 
 export const audioCurrentTime = writable(0);
 export const audioDuration = writable(0);
@@ -18,60 +19,10 @@ let audioLoadToken = 0;
 let lastTrackKey = '';
 let lastPlaying = false;
 let syncingFromAudio = false;
+let switchingTrack = false;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
-}
-
-function resolveMusicUrl(raw: string): string {
-  const text = raw?.trim() ?? '';
-  if (!text) {
-    return '';
-  }
-  if (/^https?:\/\//i.test(text)) {
-    return text;
-  }
-
-  try {
-    const parsed = JSON.parse(text) as
-      | string
-      | {
-      code?: number;
-      msg?: string;
-      data?: unknown;
-      url?: unknown;
-    };
-    if (typeof parsed === 'string' && parsed.trim()) {
-      return parsed.trim();
-    }
-    if (typeof parsed === 'object' && parsed !== null) {
-      if (typeof parsed.data === 'string' && parsed.data.trim()) {
-        return parsed.data.trim();
-      }
-      if (typeof parsed.url === 'string' && parsed.url.trim()) {
-        return parsed.url.trim();
-      }
-      if (parsed.code !== undefined && parsed.code !== 0) {
-        throw new Error(parsed.msg || `音源返回错误 code=${parsed.code}`);
-      }
-    }
-  } catch {
-    return text;
-  }
-
-  return '';
-}
-
-function normalizePlayableUrl(url: string): string {
-  const text = url.trim();
-  if (!text) {
-    return '';
-  }
-  // 在 WebView/浏览器环境中，http 音频有时会被拦截；优先升级为 https。
-  if (text.startsWith('http://')) {
-    return `https://${text.slice('http://'.length)}`;
-  }
-  return text;
 }
 
 function updateTimeState() {
@@ -88,31 +39,62 @@ function syncPlayState(shouldPlay: boolean) {
     return;
   }
   if (shouldPlay && audio.paused) {
-    void audio.play().catch(() => {
+    if (!audio.currentSrc && !audio.src) {
+      audioError.set('播放歌曲失败');
+      errorToast('播放歌曲失败');
+      syncingFromAudio = true;
       setPlaying(false);
-    });
+      syncingFromAudio = false;
+      return;
+    }
+    void audio.play()
+      .then(() => {
+        syncingFromAudio = true;
+        setPlaying(true);
+        syncingFromAudio = false;
+      })
+      .catch(() => {
+        audioError.set('播放歌曲失败');
+        errorToast('播放歌曲失败');
+        syncingFromAudio = true;
+        setPlaying(false);
+        syncingFromAudio = false;
+      });
   } else if (!shouldPlay && !audio.paused) {
     audio.pause();
   }
 }
 
-async function loadAudioForTrack(track: PlayerTrack) {
+async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
   const token = ++audioLoadToken;
+  switchingTrack = true;
   audioLoading.set(true);
   audioError.set('');
   audioReady.set(false);
 
   if (!audio) {
+    switchingTrack = false;
     audioLoading.set(false);
     return;
   }
 
   const ctx = track.playback;
   if (!ctx?.sourceId || !ctx.platform || !ctx.metaJson) {
+    syncingFromAudio = true;
+    audio.pause();
     audio.removeAttribute('src');
     audio.load();
+    syncingFromAudio = false;
     audioCurrentTime.set(0);
     audioDuration.set(0);
+    if (shouldAutoPlay) {
+      audioError.set('播放歌曲失败');
+      errorToast('播放歌曲失败');
+      syncingFromAudio = true;
+      setPlaying(false);
+      syncingFromAudio = false;
+    }
+    switchingTrack = false;
     audioLoading.set(false);
     return;
   }
@@ -131,33 +113,52 @@ async function loadAudioForTrack(track: PlayerTrack) {
       musicUrl: url,
     });
 
-    const resolved = resolveMusicUrl(url);
-    const playableUrl = normalizePlayableUrl(resolved);
+    const playableUrl = url.trim();
     if (!playableUrl) {
+      syncingFromAudio = true;
+      audio.pause();
       audio.removeAttribute('src');
       audio.load();
-      audioError.set('未获取到播放地址');
+      syncingFromAudio = false;
+      audioError.set('播放歌曲失败');
+      errorToast('播放歌曲失败');
+      syncingFromAudio = true;
+      setPlaying(false);
+      syncingFromAudio = false;
       return;
     }
 
+    syncingFromAudio = true;
+    audio.pause();
     if (audio.src !== playableUrl) {
       audio.src = playableUrl;
       audio.load();
     }
+    syncingFromAudio = false;
 
-    const shouldPlay = lastPlaying;
-    if (shouldPlay) {
+    if (shouldAutoPlay) {
       await audio.play();
+      syncingFromAudio = true;
+      setPlaying(true);
+      syncingFromAudio = false;
     }
   } catch (err) {
     if (token !== audioLoadToken) {
       return;
     }
+    syncingFromAudio = true;
+    audio.pause();
     audio.removeAttribute('src');
     audio.load();
-    audioError.set(errorMessage(err));
+    syncingFromAudio = false;
+    audioError.set('播放歌曲失败');
+    errorToast('播放歌曲失败');
+    syncingFromAudio = true;
+    setPlaying(false);
+    syncingFromAudio = false;
   } finally {
     if (token === audioLoadToken) {
+      switchingTrack = false;
       audioLoading.set(false);
     }
   }
@@ -207,19 +208,21 @@ function attachAudioListeners(el: HTMLAudioElement) {
   });
 
   el.addEventListener('play', () => {
-    syncingFromAudio = true;
+    if (syncingFromAudio || switchingTrack) {
+      return;
+    }
     if (!lastPlaying) {
       setPlaying(true);
     }
-    syncingFromAudio = false;
   });
 
   el.addEventListener('pause', () => {
-    syncingFromAudio = true;
+    if (syncingFromAudio || switchingTrack) {
+      return;
+    }
     if (lastPlaying) {
       setPlaying(false);
     }
-    syncingFromAudio = false;
   });
 
   el.addEventListener('ended', () => {
@@ -249,8 +252,16 @@ function onTrackOrPlayStateChange(track: PlayerTrack, playing: boolean) {
     lastTrackKey = key;
     void loadLyricsForTrack(track);
     if (audio) {
-      void loadAudioForTrack(track);
+      if (playing) {
+        syncingFromAudio = true;
+        setPlaying(false);
+        syncingFromAudio = false;
+        void loadAudioForTrack(track, true);
+      } else {
+        syncPlayState(false);
+      }
     }
+    return;
   }
 
   if (audio) {
