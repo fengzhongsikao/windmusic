@@ -1,14 +1,13 @@
 <!-- 设置页：仅保留 Meting 网络源配置 -->
 <script lang="ts">
   import { FolderOpen, Settings } from '@lucide/svelte';
-  import { getMetingPlatform, getMetingURL, setMetingPlatform, setMetingURL } from '@/lib/meting';
+  import { getMetingURL, setMetingURL } from '@/lib/meting';
   import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
 
   let dataDir = $state('');
   let message = $state('');
   let error = $state('');
   let metingURL = $state('');
-  let metingPlatform = $state<'tx'>('tx');
 
   function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
@@ -25,13 +24,11 @@
 
   $effect(() => {
     metingURL = getMetingURL();
-    metingPlatform = getMetingPlatform() as 'tx';
     void loadDataDir();
   });
 
   function saveMetingSettings() {
     setMetingURL(metingURL);
-    setMetingPlatform(metingPlatform);
     metingURL = getMetingURL();
     message = metingURL ? '已启用 Meting 源' : '已关闭 Meting 源';
     error = '';
@@ -61,9 +58,6 @@
         placeholder="例如：https://meting.mikus.ink"
         bind:value={metingURL}
       />
-      <select class="meting-select" bind:value={metingPlatform}>
-        <option value="tx">QQ（tencent）</option>
-      </select>
       <button type="button" class="btn save-btn" onclick={saveMetingSettings}>保存</button>
     </div>
 
@@ -117,13 +111,12 @@
 
   .meting-row {
     display: grid;
-    grid-template-columns: 1fr 160px auto;
+    grid-template-columns: 1fr auto;
     gap: 10px;
     margin-bottom: 12px;
   }
 
-  .meting-input,
-  .meting-select {
+  .meting-input {
     border: 1px solid #ddd;
     border-radius: 8px;
     padding: 8px 10px;

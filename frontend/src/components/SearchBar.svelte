@@ -1,6 +1,6 @@
 <script lang="ts">
   import { Search, Settings, X } from '@lucide/svelte';
-  import { link, push, router } from 'svelte-spa-router';
+  import { link, router } from 'svelte-spa-router';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
 
   let searchQuery = $state('');
@@ -8,7 +8,7 @@
   function clearSearch() {
     searchQuery = '';
     if (router.location === '/search') {
-      void push('/search');
+      window.location.hash = '/search';
     }
   }
 
@@ -17,7 +17,7 @@
     if (!keyword) {
       return;
     }
-    void push(buildSearchHref(keyword));
+    window.location.hash = buildSearchHref(keyword);
   }
 
   function handleKeydown(event: KeyboardEvent) {
@@ -32,9 +32,8 @@
       return;
     }
     const { q } = parseSearchParams(router.querystring);
-    if (q !== searchQuery) {
-      searchQuery = q;
-    }
+    // 仅在路由参数变化时同步，避免输入过程中被旧 q 覆盖。
+    searchQuery = q;
   });
 </script>
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -34,9 +35,11 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 	if limit <= 0 {
 		limit = 20
 	}
-	server := metingServer(platform)
-	endpoint := fmt.Sprintf("%s/api?server=%s&type=search&s=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(keyword))
-	body, err := getJSONList(endpoint)
+	server, err := metingServer(platform)
+	if err != nil {
+		return nil, err
+	}
+	body, err := getMetingSearchList(normalizeMetingBase(baseURL), server, keyword)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +54,7 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 	}
 
 	list := make([]music.SongItem, 0, end-start)
-	for _, row := range body[start:end] {
+	for idx, row := range body[start:end] {
 		id := strings.TrimSpace(stringValue(row["id"]))
 		// Meting 标准字段：name / artist；同时兼容历史 title / author
 		title := strings.TrimSpace(stringValue(row["name"]))
@@ -61,6 +64,16 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 		author := strings.TrimSpace(stringValue(row["artist"]))
 		if author == "" {
 			author = strings.TrimSpace(stringValue(row["author"]))
+		}
+		if id == "" {
+			id = extractMetingIDFromResourceURL(strings.TrimSpace(stringValue(row["url"])))
+		}
+		if id == "" {
+			id = extractMetingIDFromResourceURL(strings.TrimSpace(stringValue(row["lrc"])))
+		}
+		if id == "" {
+			// 最后兜底，确保前端 keyed each 不会因为空/重复 id 崩溃。
+			id = fmt.Sprintf("meting:%s:%s:%d", title, author, start+idx)
 		}
 		metaObj := map[string]interface{}{
 			"id":      id,
@@ -108,7 +121,10 @@ func GetMetingMusicURL(baseURL, platform, metaJSON string) (string, error) {
 	if raw := strings.TrimSpace(stringValue(resolved["url"])); raw != "" {
 		return raw, nil
 	}
-	server := metingServer(platform)
+	server, err := metingServer(platform)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("%s/api?server=%s&type=url&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id)), nil
 }
 
@@ -124,7 +140,10 @@ func GetMetingPic(baseURL, platform, metaJSON string) (string, error) {
 	if raw := strings.TrimSpace(stringValue(resolved["pic"])); raw != "" {
 		return raw, nil
 	}
-	server := metingServer(platform)
+	server, err := metingServer(platform)
+	if err != nil {
+		return "", err
+	}
 	return fmt.Sprintf("%s/api?server=%s&type=pic&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id)), nil
 }
 
@@ -140,7 +159,10 @@ func GetMetingLyric(baseURL, platform, metaJSON string) (*music.LyricInfo, error
 			return nil, fmt.Errorf("meting meta missing lrc/id")
 		}
 		if lrcURL == "" {
-			server := metingServer(platform)
+			server, err := metingServer(platform)
+			if err != nil {
+				return nil, err
+			}
 			lrcURL = fmt.Sprintf("%s/api?server=%s&type=lrc&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id))
 		}
 	}
@@ -164,9 +186,11 @@ func resolveMetingID(baseURL, platform string, meta map[string]interface{}) (str
 		return "", meta
 	}
 
-	server := metingServer(platform)
-	searchURL := fmt.Sprintf("%s/api?server=%s&type=search&s=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(keyword))
-	items, err := getJSONList(searchURL)
+	server, err := metingServer(platform)
+	if err != nil {
+		return "", meta
+	}
+	items, err := getMetingSearchList(normalizeMetingBase(baseURL), server, keyword)
 	if err != nil || len(items) == 0 {
 		return "", meta
 	}
@@ -223,6 +247,47 @@ func parseMetingMeta(metaJSON string) map[string]interface{} {
 	return meta
 }
 
+func extractMetingIDFromResourceURL(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	id := strings.TrimSpace(parsed.Query().Get("id"))
+	if id != "" {
+		return id
+	}
+	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	if len(segments) == 0 {
+		return ""
+	}
+	last := strings.TrimSpace(segments[len(segments)-1])
+	if last == "" {
+		return ""
+	}
+	if _, err := strconv.ParseInt(last, 10, 64); err == nil {
+		return last
+	}
+	return ""
+}
+
+func getMetingSearchList(baseURL, server, keyword string) ([]map[string]interface{}, error) {
+	// 先按 id 搜索（兼容推荐关键词），再回退到 s 搜索（兼容普通模糊搜索）。
+	idURL := fmt.Sprintf("%s/api?server=%s&type=search&id=%s", baseURL, url.QueryEscape(server), url.QueryEscape(keyword))
+	items, err := getJSONList(idURL)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+
+	sURL := fmt.Sprintf("%s/api?server=%s&type=search&s=%s", baseURL, url.QueryEscape(server), url.QueryEscape(keyword))
+	return getJSONList(sURL)
+}
+
 func normalizeMetingBase(raw string) string {
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimSuffix(raw, "/")
@@ -232,8 +297,16 @@ func normalizeMetingBase(raw string) string {
 	return raw
 }
 
-func metingServer(platform string) string {
-	return "tencent"
+func metingServer(platform string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(platform))
+	switch normalized {
+	case "", "tx", "tencent", "qq":
+		return "tencent", nil
+	case "wy", "netease", "163":
+		return "netease", nil
+	default:
+		return "", fmt.Errorf("unsupported meting platform: %s", platform)
+	}
 }
 
 func getJSONList(rawURL string) ([]map[string]interface{}, error) {

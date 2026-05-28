@@ -17,12 +17,17 @@ export function setMetingURL(url: string) {
 }
 
 export function getMetingPlatform(): string {
+  if (typeof window === 'undefined') return 'tx';
+  const raw = (window.localStorage.getItem(METING_PLATFORM_KEY) ?? '').trim().toLowerCase();
+  if (raw === 'wy' || raw === 'netease') return 'wy';
   return 'tx';
 }
 
 export function setMetingPlatform(platform: string) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(METING_PLATFORM_KEY, 'tx');
+  const normalized = platform.trim().toLowerCase();
+  const value = normalized === 'wy' || normalized === 'netease' ? 'wy' : 'tx';
+  window.localStorage.setItem(METING_PLATFORM_KEY, value);
 }
 
 export function metingSourceId(url: string): string {

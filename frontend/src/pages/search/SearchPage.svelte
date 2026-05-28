@@ -7,7 +7,7 @@
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingURL, metingSourceId } from '@/lib/meting';
+  import { getMetingPlatform, getMetingURL, metingSourceId, setMetingPlatform } from '@/lib/meting';
   import {
     player,
     setCurrentTrack,
@@ -24,6 +24,9 @@
 
   const PLATFORM_LABELS: Record<string, string> = {
     tx: 'QQ音乐',
+    tencent: 'QQ音乐',
+    wy: '网易云',
+    netease: '网易云',
   };
 
   let songs = $state<SongItem[]>([]);
@@ -35,6 +38,7 @@
   let pageLoading = $state(false);
   let error = $state('');
   let keyword = $state('');
+  let selectedPlatform = $state<'tx' | 'wy'>('tx');
   let currentSongId = $derived(player.currentSong.id);
   let brokenCovers = $state<Record<string, true>>({});
 
@@ -74,8 +78,8 @@
     return err instanceof Error ? err.message : String(err);
   }
 
-  function pageCacheKey(sourceId: string, q: string, pageNum: number) {
-    return `${sourceId}|${q}|${pageNum}`;
+  function pageCacheKey(sourceId: string, platform: string, q: string, pageNum: number) {
+    return `${sourceId}|${platform}|${q}|${pageNum}`;
   }
 
   function readPageCache(key: string): PageCacheEntry | undefined {
@@ -114,7 +118,25 @@
   }
 
   async function resolveSourceId(): Promise<string> {
+    const metingURL = getMetingURL();
+    if (metingURL) {
+      return metingSourceId(metingURL);
+    }
     return 'builtin::network';
+  }
+
+  function resolvePlatform(): string {
+    return selectedPlatform;
+  }
+
+  async function handlePlatformChange(next: string) {
+    const normalized = next === 'wy' ? 'wy' : 'tx';
+    selectedPlatform = normalized;
+    setMetingPlatform(normalized);
+    clearPageCache();
+    if (keyword) {
+      await runSearch(keyword, 1);
+    }
   }
 
   async function runSearch(q: string, pageNum: number) {
@@ -122,19 +144,15 @@
     const isSameQuery = q === prevKeyword && q !== '';
     const hasExistingResults = isSameQuery && songs.length > 0;
 
-    keyword = q;
-    page = pageNum;
-
     if (!q) {
-      songs = [];
-      total = 0;
-      sourcePlatform = '';
       error = '';
       loading = false;
       pageLoading = false;
-      clearPageCache();
       return;
     }
+
+    keyword = q;
+    page = pageNum;
 
     if (!isSameQuery) {
       clearPageCache();
@@ -157,8 +175,8 @@
       return;
     }
 
-    const platform = isSameQuery && sourcePlatform ? sourcePlatform : '';
-    const cacheKey = pageCacheKey(sourceId, q, pageNum);
+    const platform = isSameQuery && sourcePlatform ? sourcePlatform : resolvePlatform();
+    const cacheKey = pageCacheKey(sourceId, platform, q, pageNum);
     const cached = readPageCache(cacheKey);
     if (cached) {
       songs = cached.songs;
@@ -255,6 +273,7 @@
     if (router.location !== '/search') {
       return;
     }
+    selectedPlatform = getMetingPlatform() === 'wy' ? 'wy' : 'tx';
     const { q, page: pageNum } = parseSearchParams(router.querystring);
     void runSearch(q, pageNum);
   });
@@ -282,6 +301,18 @@
 
 <div class="search-page">
   <div class="section-header">
+    <div class="platform-picker">
+      <label for="search-platform" class="platform-label">平台</label>
+      <select
+        id="search-platform"
+        class="platform-select"
+        bind:value={selectedPlatform}
+        onchange={(event) => handlePlatformChange((event.currentTarget as HTMLSelectElement).value)}
+      >
+        <option value="tx">QQ（tencent）</option>
+        <option value="wy">网易云（netease）</option>
+      </select>
+    </div>
     {#if hasKeyword && !loading && !error}
       <p class="result-meta">
         {#if platformLabel}
@@ -374,6 +405,26 @@
     margin-bottom: 24px;
     flex-wrap: wrap;
     gap: 12px;
+  }
+
+  .platform-picker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .platform-label {
+    font-size: 13px;
+    color: #666;
+  }
+
+  .platform-select {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: #fff;
+    color: #333;
   }
 
   .title-row {

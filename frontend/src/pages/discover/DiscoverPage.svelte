@@ -6,7 +6,7 @@
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingURL, metingSourceId } from '@/lib/meting';
+  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/lib/meting';
   import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
   import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
@@ -52,7 +52,19 @@
   };
 
   async function resolveSourceId(): Promise<string> {
+    const metingURL = getMetingURL();
+    if (metingURL) {
+      return metingSourceId(metingURL);
+    }
     return 'builtin::network';
+  }
+
+  function resolvePlatform(): string {
+    const metingURL = getMetingURL();
+    if (metingURL) {
+      return getMetingPlatform();
+    }
+    return '';
   }
 
   const tracks = $derived<TrackItem[]>(
@@ -133,8 +145,7 @@
 
     const request = (async () => {
       const sourceId = await resolveSourceId();
-      // 复用搜索后端：platform 传空表示使用音源默认平台。
-      const result = await searchApi(sourceId, '', keyword, 1);
+      const result = await searchApi(sourceId, resolvePlatform(), keyword, 1);
       const resultSongs = result.list ?? [];
       if (typeof window !== 'undefined') {
         const entry: RecommendCacheEntry = {
