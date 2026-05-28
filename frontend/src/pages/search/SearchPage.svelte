@@ -5,7 +5,8 @@
   import { Button, Heading, Spinner } from 'flowbite-svelte';
   import { Music, Search } from '@lucide/svelte';
   import { router } from 'svelte-spa-router';
-  import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
+  import TrackList from '@/components/TrackList.svelte';
+  import type { TrackItem } from '@/lib/track';
   import { playerState, togglePlayByTrack } from '@/stores/player';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';

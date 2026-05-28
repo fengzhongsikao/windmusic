@@ -4,7 +4,8 @@
 -->
 <script lang="ts">
   import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
-  import TrackList, { type TrackItem } from '@/components/TrackList.svelte';
+  import TrackList from '@/components/TrackList.svelte';
+  import type { TrackItem } from '@/lib/track';
   import { playerState, togglePlayByTrack } from '@/stores/player';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';

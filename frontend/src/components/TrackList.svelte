@@ -1,14 +1,6 @@
 <script lang="ts">
   import { Music, Play } from '@lucide/svelte';
-
-  export interface TrackItem {
-    id: string | number;
-    title: string;
-    artist: string;
-    album: string;
-    duration: string;
-    coverUrl?: string;
-  }
+  import type { TrackItem } from '@/lib/track';
 
   interface Props {
     tracks: TrackItem[];

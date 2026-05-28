@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import type { TrackItem } from '@/components/TrackList.svelte';
+import type { TrackItem } from '@/lib/track';
+import defaultCover from '@/assets/images/default.jpg';
 
 export type PlayerTrack = Pick<TrackItem, 'id' | 'title' | 'artist' | 'album' | 'coverUrl'>;
 
@@ -14,6 +15,7 @@ const initialState: PlayerState = {
     title: '在银河中孤独摇摆',
     artist: '知更鸟 / HOYO-MiX',
     album: '未知专辑',
+    coverUrl: defaultCover,
   },
   isPlaying: false,
 };
