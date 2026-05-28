@@ -6,7 +6,7 @@
   import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { playerState, togglePlayByTrack } from '@/stores/player';
+  import { player, togglePlayByTrack } from '@/stores/player.svelte';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
 
@@ -38,8 +38,7 @@
   let loading = $state(false);
   let error = $state('');
 
-  let currentSongId = $derived($playerState.currentTrack.id);
-  let isPlaying = $derived($playerState.isPlaying);
+  let currentSongId = $derived(player.currentSong.id);
 
   let cachedSourceId = $state<string | null>(null);
   let recommendRequestId = 0;
@@ -209,7 +208,7 @@
       <p>正在加载推荐…</p>
     </div>
   {:else}
-    <TrackList {tracks} activeId={currentSongId} {isPlaying} onSelect={playTrack} />
+    <TrackList {tracks} activeId={currentSongId} isPlaying={player.isPlaying} onSelect={playTrack} />
   {/if}
 </div>
 

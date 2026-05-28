@@ -1,54 +1,13 @@
-import { writable } from 'svelte/store';
-import type { TrackItem } from '@/lib/track';
-import defaultCover from '@/assets/images/default.jpg';
+/** 类型与 API 重导出（Runes 实现在 player.svelte.ts） */
+export type { ViewMode, PlaybackContext, PlayerTrack } from './player.svelte';
 
-export type PlaybackContext = {
-  sourceId: string;
-  platform: string;
-  metaJson: string;
-};
-
-export type PlayerTrack = Pick<TrackItem, 'id' | 'title' | 'artist' | 'album' | 'coverUrl'> & {
-  playback?: PlaybackContext;
-};
-
-type PlayerState = {
-  currentTrack: PlayerTrack;
-  isPlaying: boolean;
-};
-
-const initialState: PlayerState = {
-  currentTrack: {
-    id: 'init-galaxy',
-    title: '在银河中孤独摇摆',
-    artist: '知更鸟 / HOYO-MiX',
-    album: '未知专辑',
-    coverUrl: defaultCover,
-  },
-  isPlaying: false,
-};
-
-export const playerState = writable<PlayerState>(initialState);
-
-export function setCurrentTrack(track: PlayerTrack) {
-  playerState.update((state) => ({
-    ...state,
-    currentTrack: track,
-  }));
-}
-
-export function togglePlayByTrack(track: PlayerTrack) {
-  playerState.update((state) => {
-    if (String(state.currentTrack.id) === String(track.id)) {
-      return { ...state, isPlaying: !state.isPlaying };
-    }
-    return {
-      currentTrack: track,
-      isPlaying: true,
-    };
-  });
-}
-
-export function togglePlayerPlayback() {
-  playerState.update((state) => ({ ...state, isPlaying: !state.isPlaying }));
-}
+export {
+  player,
+  openImmersiveView,
+  closeImmersiveView,
+  toggleImmersiveView,
+  setCurrentTrack,
+  togglePlayByTrack,
+  togglePlayerPlayback,
+  setPlaying,
+} from './player.svelte';

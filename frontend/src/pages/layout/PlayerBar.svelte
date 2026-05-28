@@ -3,8 +3,9 @@
 -->
 <script lang="ts">
   import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
-  import { playerState, togglePlayerPlayback } from '@/stores/player';
-  import { openSongDetailDrawer } from '@/stores/songDetailDrawer';
+  import { player, togglePlayerPlayback, openImmersiveView } from '@/stores/player.svelte';
+  import { fetchCoverUrl } from '@/lib/wailsPlayer';
+  import defaultCover from '@/assets/images/default.jpg';
   import {
     audioCurrentTime,
     audioDuration,
@@ -12,15 +13,17 @@
     setAudioVolume,
   } from '@/stores/audioEngine';
 
-  let isPlaying = $derived($playerState.isPlaying);
+  /** 仅打开详情页时切换沉浸式配色，单纯播放不变 */
+  let barImmersive = $derived(player.viewMode === 'immersive');
+  let coverSrc = $derived(player.currentSong.coverUrl?.trim() || defaultCover);
+  let displayedCover = $state(defaultCover);
+
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
   let volume = $state(75);
   let isMuted = $state(false);
   let isShuffled = $state(false);
   let repeatMode: 'off' | 'all' | 'one' = $state('off');
-
-  let currentSong = $derived($playerState.currentTrack);
 
   function togglePlay() {
     togglePlayerPlayback();
@@ -35,7 +38,15 @@
   }
 
   function openSongDetail() {
-    openSongDetailDrawer();
+    openImmersiveView();
+  }
+
+  function handleBarClick(e: MouseEvent) {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, [role="slider"], a, input')) {
+      return;
+    }
+    openImmersiveView();
   }
 
   function toggleRepeat() {
@@ -86,6 +97,33 @@
     setAudioVolume(volume, isMuted);
   });
 
+  $effect(() => {
+    const target = coverSrc;
+    if (!barImmersive) {
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      const resolved =
+        !target || target === defaultCover ? await fetchCoverUrl(player.currentSong) : target;
+      if (cancelled) return;
+
+      const img = new Image();
+      img.onload = () => {
+        if (!cancelled) displayedCover = resolved;
+      };
+      img.onerror = () => {
+        if (!cancelled) displayedCover = defaultCover;
+      };
+      img.src = resolved;
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
   function handleVolumeClick(e: MouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     volume = Math.round(((e.clientX - rect.left) / rect.width) * 100);
@@ -121,7 +159,27 @@
   }
 </script>
 
-<div class="player-bar">
+<div
+  class="player-bar"
+  class:immersive={barImmersive}
+  role="presentation"
+  onclick={handleBarClick}
+  onkeydown={(e) => {
+    if (e.key === 'Enter' && !(e.target as HTMLElement).closest('button, [role="slider"]')) {
+      openImmersiveView();
+    }
+  }}
+>
+  {#if barImmersive}
+    <div
+      class="bar-bg-cover"
+      style:background-image="url('{displayedCover}')"
+      aria-hidden="true"
+    ></div>
+    <div class="bar-bg-scrim" aria-hidden="true"></div>
+  {/if}
+
+  <div class="bar-inner">
   <div class="song-info">
     <button
       type="button"
@@ -130,8 +188,8 @@
       title="查看歌曲详情与歌词"
       aria-label="查看歌曲详情与歌词"
     >
-      {#if currentSong.coverUrl?.trim()}
-        <img src={currentSong.coverUrl} alt="" class="song-cover-img" />
+      {#if player.currentSong.coverUrl?.trim()}
+        <img src={player.currentSong.coverUrl} alt="" class="song-cover-img" />
       {:else}
         <Music size={24} />
       {/if}
@@ -143,9 +201,9 @@
         onclick={openSongDetail}
         title="查看歌曲详情与歌词"
       >
-        {currentSong.title}
+        {player.currentSong.title}
       </button>
-      <div class="song-artist">{currentSong.artist}</div>
+      <div class="song-artist">{player.currentSong.artist}</div>
     </div>
     <button type="button" class="like-btn" title="喜欢">
       <Heart size={18} />
@@ -165,8 +223,8 @@
       <button type="button" class="ctrl-btn" title="上一首">
         <SkipBack size={18} />
       </button>
-      <button type="button" class="ctrl-btn play-btn" onclick={togglePlay} title={isPlaying ? '暂停' : '播放'}>
-        {#if isPlaying}
+      <button type="button" class="ctrl-btn play-btn" onclick={togglePlay} title={player.isPlaying ? '暂停' : '播放'}>
+        {#if player.isPlaying}
           <Pause size={18} />
         {:else}
           <Play size={18} />
@@ -262,19 +320,116 @@
       </div>
     </div>
   </div>
+  </div>
 </div>
 
 <style>
   .player-bar {
+    position: relative;
     height: 80px;
+    cursor: default;
     background: #fafafa;
     border-top: 1px solid #eee;
+    color: #333;
+    user-select: none;
+    overflow: hidden;
+    transition:
+      background 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+      border-color 0.55s cubic-bezier(0.4, 0, 0.2, 1),
+      color 0.45s ease;
+  }
+
+  .bar-inner {
+    position: relative;
+    z-index: 1;
+    height: 100%;
     display: grid;
     grid-template-columns: 280px 1fr 220px;
     align-items: center;
     padding: 0 20px;
-    color: #333;
-    user-select: none;
+  }
+
+  .bar-bg-cover {
+    position: absolute;
+    inset: -40% -10% 0;
+    background-size: cover;
+    background-position: center top;
+    filter: blur(48px) saturate(1.2) brightness(0.55);
+    pointer-events: none;
+    transition: opacity 0.55s ease;
+  }
+
+  .bar-bg-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(22, 16, 13, 0.82);
+    backdrop-filter: blur(24px) saturate(1.1);
+    -webkit-backdrop-filter: blur(24px) saturate(1.1);
+    pointer-events: none;
+  }
+
+  .player-bar.immersive {
+    border-top: none;
+    color: rgba(255, 255, 255, 0.92);
+  }
+
+  .player-bar.immersive .song-cover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .player-bar.immersive .song-title-btn:hover {
+    color: #fff;
+  }
+
+  .player-bar.immersive .song-artist {
+    color: rgba(255, 255, 255, 0.48);
+  }
+
+  .player-bar.immersive .like-btn {
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .player-bar.immersive .ctrl-btn {
+    color: rgba(255, 255, 255, 0.72);
+  }
+
+  .player-bar.immersive .ctrl-btn:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .player-bar.immersive .play-btn {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+  }
+
+  .player-bar.immersive .play-btn:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  .player-bar.immersive .time {
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .player-bar.immersive .progress-bg {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .player-bar.immersive .progress-fill {
+    background: #3ecf6e;
+  }
+
+  .player-bar.immersive .progress-thumb {
+    background: #fff;
+  }
+
+  .player-bar.immersive .volume-bg {
+    background: rgba(255, 255, 255, 0.15);
+  }
+
+  .player-bar.immersive .volume-fill {
+    background: rgba(255, 255, 255, 0.55);
   }
 
   .song-info {
@@ -408,12 +563,13 @@
   .play-btn {
     width: 42px;
     height: 42px;
-    background: #667eea;
-    color: #fff;
+    background: transparent;
+    color: #666;
   }
 
   .play-btn:hover {
-    background: #5a6fd6;
+    background: rgba(0, 0, 0, 0.08);
+    color: #333;
     transform: scale(1.05);
   }
 

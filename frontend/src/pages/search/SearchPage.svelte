@@ -8,8 +8,12 @@
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { playerState, setCurrentTrack, togglePlayByTrack } from '@/stores/player';
-  import { openSongDetailDrawer } from '@/stores/songDetailDrawer';
+  import {
+    player,
+    setCurrentTrack,
+    togglePlayByTrack,
+    openImmersiveView,
+  } from '@/stores/player.svelte';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
@@ -34,8 +38,7 @@
   let pageLoading = $state(false);
   let error = $state('');
   let keyword = $state('');
-  let currentSongId = $derived($playerState.currentTrack.id);
-  let isPlaying = $derived($playerState.isPlaying);
+  let currentSongId = $derived(player.currentSong.id);
   let brokenCovers = $state<Record<string, true>>({});
 
   let cachedSourceId = $state<string | null>(null);
@@ -240,7 +243,7 @@
 
   function openSongDetail(track: TrackItem) {
     setCurrentTrack(resolvePlayerTrack(track));
-    openSongDetailDrawer();
+    openImmersiveView();
   }
 
   function goToPage(nextPage: number) {
@@ -307,7 +310,7 @@
       <TrackList
         {tracks}
         activeId={currentSongId}
-        {isPlaying}
+        isPlaying={player.isPlaying}
         {indexOffset}
         {brokenCovers}
         onSelect={playTrack}

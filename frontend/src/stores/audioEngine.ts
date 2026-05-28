@@ -1,6 +1,6 @@
-import { writable, get } from 'svelte/store';
+import { writable } from 'svelte/store';
 import { GetMusicURL } from '../../wailsjs/go/main/App';
-import { playerState, type PlayerTrack } from '@/stores/player';
+import { setPlaying, type PlayerTrack } from '@/stores/player.svelte';
 import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
 
 export const audioCurrentTime = writable(0);
@@ -16,6 +16,7 @@ let listenersAttached = false;
 
 let audioLoadToken = 0;
 let lastTrackKey = '';
+let lastPlaying = false;
 let syncingFromAudio = false;
 
 function errorMessage(err: unknown): string {
@@ -37,7 +38,7 @@ function syncPlayState(shouldPlay: boolean) {
   }
   if (shouldPlay && audio.paused) {
     void audio.play().catch(() => {
-      playerState.update((state) => ({ ...state, isPlaying: false }));
+      setPlaying(false);
     });
   } else if (!shouldPlay && !audio.paused) {
     audio.pause();
@@ -84,7 +85,7 @@ async function loadAudioForTrack(track: PlayerTrack) {
       audio.load();
     }
 
-    const shouldPlay = get(playerState).isPlaying;
+    const shouldPlay = lastPlaying;
     if (shouldPlay) {
       await audio.play();
     }
@@ -117,37 +118,41 @@ function attachAudioListeners(el: HTMLAudioElement) {
 
   el.addEventListener('play', () => {
     syncingFromAudio = true;
-    playerState.update((state) => (state.isPlaying ? state : { ...state, isPlaying: true }));
+    if (!lastPlaying) {
+      setPlaying(true);
+    }
     syncingFromAudio = false;
   });
 
   el.addEventListener('pause', () => {
     syncingFromAudio = true;
-    playerState.update((state) => (!state.isPlaying ? state : { ...state, isPlaying: false }));
+    if (lastPlaying) {
+      setPlaying(false);
+    }
     syncingFromAudio = false;
   });
 
   el.addEventListener('ended', () => {
     syncingFromAudio = true;
-    playerState.update((state) => ({ ...state, isPlaying: false }));
+    setPlaying(false);
     syncingFromAudio = false;
   });
 }
 
-function onTrackOrPlayStateChange() {
-  const state = get(playerState);
-  const key = trackPlaybackKey(state.currentTrack);
+function onTrackOrPlayStateChange(track: PlayerTrack, playing: boolean) {
+  const key = trackPlaybackKey(track);
+  lastPlaying = playing;
 
   if (key !== lastTrackKey) {
     lastTrackKey = key;
-    void loadLyricsForTrack(state.currentTrack);
+    void loadLyricsForTrack(track);
     if (audio) {
-      void loadAudioForTrack(state.currentTrack);
+      void loadAudioForTrack(track);
     }
   }
 
   if (audio) {
-    syncPlayState(state.isPlaying);
+    syncPlayState(playing);
   }
 }
 
@@ -155,13 +160,10 @@ export function initAudioEngine(el: HTMLAudioElement, root: HTMLElement) {
   audio = el;
   audioRoot = root;
   attachAudioListeners(el);
-  onTrackOrPlayStateChange();
 }
 
-export function startAudioSync() {
-  playerState.subscribe(() => {
-    onTrackOrPlayStateChange();
-  });
+export function syncPlayerState(track: PlayerTrack, playing: boolean) {
+  onTrackOrPlayStateChange(track, playing);
 }
 
 export function getAudioElement() {

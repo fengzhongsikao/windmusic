@@ -3,12 +3,13 @@
   import Sidebar from '@/pages/layout/Sidebar.svelte';
   import PlayerBar from '@/pages/layout/PlayerBar.svelte';
   import SearchBar from '@/components/SearchBar.svelte';
+  import PlayerAudioSync from '@/components/PlayerAudioSync.svelte';
+  import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/audioEngine';
-  import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
 
-  let audioRoot = $state<HTMLDivElement | null>(null);
   let audioEl = $state<HTMLAudioElement | null>(null);
+  let audioRoot = $state<HTMLDivElement | null>(null);
 
   $effect(() => {
     if (audioEl && audioRoot) {
@@ -16,6 +17,8 @@
     }
   });
 </script>
+
+<PlayerAudioSync />
 
 <div class="app-layout">
   <div class="app-body">
@@ -35,12 +38,12 @@
   <div class="app-footer">
     <PlayerBar />
   </div>
+</div>
 
-  <div id="audio-root" class="audio-root" bind:this={audioRoot} aria-hidden="true">
-    <audio bind:this={audioEl} preload="metadata"></audio>
-  </div>
+<SongDetailDrawer />
 
-  <SongDetailDrawer />
+<div id="audio-root" class="audio-root" bind:this={audioRoot} aria-hidden="true">
+  <audio bind:this={audioEl} preload="metadata"></audio>
 </div>
 
 <style>
@@ -50,13 +53,14 @@
     height: 100vh;
     width: 100vw;
     overflow: hidden;
-    background: #fff;
+    background: #f5f5f5;
   }
 
   .app-body {
     flex: 1;
     display: flex;
     overflow: hidden;
+    min-height: 0;
   }
 
   .app-sidebar {
@@ -71,6 +75,7 @@
     flex-direction: column;
     overflow: hidden;
     background: #fff;
+    min-height: 0;
   }
 
   .main-search {
@@ -86,6 +91,8 @@
   }
 
   .app-footer {
+    position: relative;
+    z-index: 110;
     height: 80px;
     flex-shrink: 0;
   }
