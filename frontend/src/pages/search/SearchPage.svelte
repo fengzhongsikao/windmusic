@@ -7,7 +7,9 @@
   import { router } from 'svelte-spa-router';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { playerState, togglePlayByTrack } from '@/stores/player';
+  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import { playerState, setCurrentTrack, togglePlayByTrack } from '@/stores/player';
+  import { openSongDetailDrawer } from '@/stores/songDetailDrawer';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
@@ -223,14 +225,22 @@
     brokenCovers = { ...brokenCovers, [url]: true };
   }
 
+  function resolvePlayerTrack(track: TrackItem) {
+    const song = songs.find((item) => String(item.id) === String(track.id));
+    const sourceId = cachedSourceId ?? '';
+    return trackItemToPlayerTrack(
+      track,
+      buildPlaybackContext(song, sourceId, sourcePlatform),
+    );
+  }
+
   function playTrack(track: TrackItem) {
-    togglePlayByTrack({
-      id: track.id,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      coverUrl: track.coverUrl,
-    });
+    togglePlayByTrack(resolvePlayerTrack(track));
+  }
+
+  function openSongDetail(track: TrackItem) {
+    setCurrentTrack(resolvePlayerTrack(track));
+    openSongDetailDrawer();
   }
 
   function goToPage(nextPage: number) {
@@ -301,6 +311,7 @@
         {indexOffset}
         {brokenCovers}
         onSelect={playTrack}
+        onOpenDetail={openSongDetail}
         onCoverError={markCoverBroken}
         ariaLabel="搜索结果"
       />

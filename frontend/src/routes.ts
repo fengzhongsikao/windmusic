@@ -7,7 +7,6 @@ import RecentPage from '@/pages/library/RecentPage.svelte';
 import LocalPage from '@/pages/library/LocalPage.svelte';
 import SettingsPage from '@/pages/settings/SettingsPage.svelte';
 import SearchPage from '@/pages/search/SearchPage.svelte';
-
 export default {
   '/': DiscoverPage,
   '/discover': DiscoverPage,

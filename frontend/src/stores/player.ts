@@ -2,7 +2,15 @@ import { writable } from 'svelte/store';
 import type { TrackItem } from '@/lib/track';
 import defaultCover from '@/assets/images/default.jpg';
 
-export type PlayerTrack = Pick<TrackItem, 'id' | 'title' | 'artist' | 'album' | 'coverUrl'>;
+export type PlaybackContext = {
+  sourceId: string;
+  platform: string;
+  metaJson: string;
+};
+
+export type PlayerTrack = Pick<TrackItem, 'id' | 'title' | 'artist' | 'album' | 'coverUrl'> & {
+  playback?: PlaybackContext;
+};
 
 type PlayerState = {
   currentTrack: PlayerTrack;
@@ -21,6 +29,13 @@ const initialState: PlayerState = {
 };
 
 export const playerState = writable<PlayerState>(initialState);
+
+export function setCurrentTrack(track: PlayerTrack) {
+  playerState.update((state) => ({
+    ...state,
+    currentTrack: track,
+  }));
+}
 
 export function togglePlayByTrack(track: PlayerTrack) {
   playerState.update((state) => {

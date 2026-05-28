@@ -4,10 +4,17 @@
 <script lang="ts">
   import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
   import { playerState, togglePlayerPlayback } from '@/stores/player';
+  import { openSongDetailDrawer } from '@/stores/songDetailDrawer';
+  import {
+    audioCurrentTime,
+    audioDuration,
+    seekAudio,
+    setAudioVolume,
+  } from '@/stores/audioEngine';
 
   let isPlaying = $derived($playerState.isPlaying);
-  let currentTime = $state(0);
-  let duration = $state(269);
+  let currentTime = $derived($audioCurrentTime);
+  let duration = $derived($audioDuration);
   let volume = $state(75);
   let isMuted = $state(false);
   let isShuffled = $state(false);
@@ -27,6 +34,10 @@
     isShuffled = !isShuffled;
   }
 
+  function openSongDetail() {
+    openSongDetailDrawer();
+  }
+
   function toggleRepeat() {
     const modes: ('off' | 'all' | 'one')[] = ['off', 'all', 'one'];
     const currentIndex = modes.indexOf(repeatMode);
@@ -40,32 +51,103 @@
   }
 
   function handleProgressClick(e: MouseEvent) {
+    if (duration <= 0) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const percent = (e.clientX - rect.left) / rect.width;
-    currentTime = percent * duration;
+    seekAudio(percent * duration);
   }
+
+  function handleProgressKeydown(e: KeyboardEvent) {
+    if (duration <= 0) return;
+    const step = 5;
+    switch (e.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        e.preventDefault();
+        seekAudio(Math.max(0, currentTime - step));
+        break;
+      case 'ArrowRight':
+      case 'ArrowUp':
+        e.preventDefault();
+        seekAudio(Math.min(duration, currentTime + step));
+        break;
+      case 'Home':
+        e.preventDefault();
+        seekAudio(0);
+        break;
+      case 'End':
+        e.preventDefault();
+        seekAudio(duration);
+        break;
+    }
+  }
+
+  $effect(() => {
+    setAudioVolume(volume, isMuted);
+  });
 
   function handleVolumeClick(e: MouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     volume = Math.round(((e.clientX - rect.left) / rect.width) * 100);
     isMuted = false;
   }
+
+  function handleVolumeKeydown(e: KeyboardEvent) {
+    const step = 5;
+    switch (e.key) {
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        e.preventDefault();
+        isMuted = false;
+        volume = Math.max(0, volume - step);
+        break;
+      case 'ArrowRight':
+      case 'ArrowUp':
+        e.preventDefault();
+        isMuted = false;
+        volume = Math.min(100, volume + step);
+        break;
+      case 'Home':
+        e.preventDefault();
+        isMuted = false;
+        volume = 0;
+        break;
+      case 'End':
+        e.preventDefault();
+        isMuted = false;
+        volume = 100;
+        break;
+    }
+  }
 </script>
 
 <div class="player-bar">
   <div class="song-info">
-    <div class="song-cover">
+    <button
+      type="button"
+      class="song-cover"
+      onclick={openSongDetail}
+      title="查看歌曲详情与歌词"
+      aria-label="查看歌曲详情与歌词"
+    >
       {#if currentSong.coverUrl?.trim()}
         <img src={currentSong.coverUrl} alt="" class="song-cover-img" />
       {:else}
         <Music size={24} />
       {/if}
-    </div>
+    </button>
     <div class="song-details">
-      <div class="song-title">{currentSong.title}</div>
+      <button
+        type="button"
+        class="song-title song-title-btn"
+        onclick={openSongDetail}
+        title="查看歌曲详情与歌词"
+      >
+        {currentSong.title}
+      </button>
       <div class="song-artist">{currentSong.artist}</div>
     </div>
-    <button class="like-btn" title="喜欢">
+    <button type="button" class="like-btn" title="喜欢">
       <Heart size={18} />
     </button>
   </div>
@@ -80,17 +162,17 @@
       >
         <Shuffle size={16} />
       </button>
-      <button class="ctrl-btn" title="上一首">
+      <button type="button" class="ctrl-btn" title="上一首">
         <SkipBack size={18} />
       </button>
-      <button class="ctrl-btn play-btn" onclick={togglePlay} title={isPlaying ? '暂停' : '播放'}>
+      <button type="button" class="ctrl-btn play-btn" onclick={togglePlay} title={isPlaying ? '暂停' : '播放'}>
         {#if isPlaying}
           <Pause size={18} />
         {:else}
           <Play size={18} />
         {/if}
       </button>
-      <button class="ctrl-btn" title="下一首">
+      <button type="button" class="ctrl-btn" title="下一首">
         <SkipForward size={18} />
       </button>
       <button
@@ -109,8 +191,18 @@
 
     <div class="progress-section">
       <span class="time">{formatTime(currentTime)}</span>
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-      <div class="progress-bar" onclick={handleProgressClick}>
+      <div
+        class="progress-bar"
+        role="slider"
+        tabindex="0"
+        aria-label="播放进度"
+        aria-valuemin={0}
+        aria-valuemax={duration}
+        aria-valuenow={currentTime}
+        aria-valuetext={formatTime(currentTime)}
+        onclick={handleProgressClick}
+        onkeydown={handleProgressKeydown}
+      >
         <div class="progress-bg">
           <div
             class="progress-fill"
@@ -125,14 +217,20 @@
   </div>
 
   <div class="extra-controls">
-    <button class="ctrl-btn small" title="歌词">
+    <button
+      type="button"
+      class="ctrl-btn small"
+      title="歌词"
+      aria-label="打开歌词详情"
+      onclick={openSongDetail}
+    >
       <MicVocal size={16} />
     </button>
-    <button class="ctrl-btn small" title="播放列表">
+    <button type="button" class="ctrl-btn small" title="播放列表">
       <ListMusic size={16} />
     </button>
     <div class="volume-control">
-      <button class="ctrl-btn small" onclick={toggleMute} title={isMuted ? '取消静音' : '静音'}>
+      <button type="button" class="ctrl-btn small" onclick={toggleMute} title={isMuted ? '取消静音' : '静音'}>
         {#if isMuted}
           <VolumeX size={16} />
         {:else if volume > 50}
@@ -143,8 +241,18 @@
           <Volume size={16} />
         {/if}
       </button>
-      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-      <div class="volume-bar" onclick={handleVolumeClick}>
+      <div
+        class="volume-bar"
+        role="slider"
+        tabindex="0"
+        aria-label="音量"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={isMuted ? 0 : volume}
+        aria-valuetext={isMuted ? '静音' : `${volume}%`}
+        onclick={handleVolumeClick}
+        onkeydown={handleVolumeKeydown}
+      >
         <div class="volume-bg">
           <div
             class="volume-fill"
@@ -178,6 +286,8 @@
   .song-cover {
     width: 50px;
     height: 50px;
+    padding: 0;
+    border: none;
     background: #f0f0f0;
     border-radius: 8px;
     display: flex;
@@ -185,6 +295,14 @@
     justify-content: center;
     flex-shrink: 0;
     color: #999;
+    cursor: pointer;
+    overflow: hidden;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+
+  .song-cover:hover {
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.25);
+    transform: scale(1.03);
   }
 
   .song-cover-img {
@@ -196,6 +314,22 @@
 
   .song-details {
     overflow: hidden;
+  }
+
+  .song-title-btn {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .song-title-btn:hover {
+    color: #667eea;
+    text-decoration: underline;
   }
 
   .song-title {

@@ -9,6 +9,7 @@
     indexOffset?: number;
     brokenCovers?: Record<string, true>;
     onSelect?: (track: TrackItem) => void;
+    onOpenDetail?: (track: TrackItem) => void;
     onCoverError?: (url: string) => void;
     ariaLabel?: string;
   }
@@ -20,9 +21,15 @@
     indexOffset = 0,
     brokenCovers = {},
     onSelect,
+    onOpenDetail,
     onCoverError,
     ariaLabel = '歌曲列表',
   }: Props = $props();
+
+  function handleOpenDetail(e: MouseEvent, track: TrackItem) {
+    e.stopPropagation();
+    onOpenDetail?.(track);
+  }
 
   function isActive(track: TrackItem): boolean {
     return activeId != null && activeId === track.id;
@@ -47,12 +54,18 @@
   </div>
 
   {#each tracks as track, index (track.id)}
-    <button
-      type="button"
+    <div
       class="track-row"
       class:active={isActive(track)}
       role="row"
+      tabindex="0"
       onclick={() => onSelect?.(track)}
+      onkeydown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect?.(track);
+        }
+      }}
     >
       <span class="col-index" role="cell">
         {#if isActive(track) && isPlaying}
@@ -86,14 +99,25 @@
           {/if}
         </span>
         <span class="track-meta">
-          <span class="track-title">{track.title}</span>
+          {#if onOpenDetail}
+            <button
+              type="button"
+              class="track-title track-title-link"
+              onclick={(e) => handleOpenDetail(e, track)}
+              title="查看歌曲详情"
+            >
+              {track.title}
+            </button>
+          {:else}
+            <span class="track-title">{track.title}</span>
+          {/if}
           <span class="track-artist">{track.artist}</span>
         </span>
       </span>
 
       <span class="col-album" role="cell">{track.album}</span>
       <span class="col-duration" role="cell">{track.duration}</span>
-    </button>
+    </div>
   {/each}
 </div>
 
@@ -132,6 +156,11 @@
     font: inherit;
     color: inherit;
     transition: background-color 0.15s ease;
+    outline: none;
+  }
+
+  .track-row:focus-visible {
+    box-shadow: inset 0 0 0 2px rgba(102, 126, 234, 0.45);
   }
 
   .track-row:hover:not(.active) {
@@ -170,6 +199,26 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .track-title-link {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .track-title-link:hover {
+    color: #667eea;
+    text-decoration: underline;
+  }
+
+  .track-row.active .track-title-link {
+    color: #5b6ee8;
   }
 
   .track-artist {

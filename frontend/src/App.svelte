@@ -2,9 +2,19 @@
   import Router from 'svelte-spa-router';
   import Sidebar from '@/pages/layout/Sidebar.svelte';
   import PlayerBar from '@/pages/layout/PlayerBar.svelte';
-  import { ChevronLeft, ChevronRight, Settings, Palette, User } from '@lucide/svelte';
   import SearchBar from '@/components/SearchBar.svelte';
   import routes from '@/routes';
+  import { initAudioEngine } from '@/stores/audioEngine';
+  import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
+
+  let audioRoot = $state<HTMLDivElement | null>(null);
+  let audioEl = $state<HTMLAudioElement | null>(null);
+
+  $effect(() => {
+    if (audioEl && audioRoot) {
+      initAudioEngine(audioEl, audioRoot);
+    }
+  });
 </script>
 
 <div class="app-layout">
@@ -25,6 +35,12 @@
   <div class="app-footer">
     <PlayerBar />
   </div>
+
+  <div id="audio-root" class="audio-root" bind:this={audioRoot} aria-hidden="true">
+    <audio bind:this={audioEl} preload="metadata"></audio>
+  </div>
+
+  <SongDetailDrawer />
 </div>
 
 <style>
@@ -72,5 +88,14 @@
   .app-footer {
     height: 80px;
     flex-shrink: 0;
+  }
+
+  .audio-root {
+    position: absolute;
+    width: 0;
+    height: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
   }
 </style>
