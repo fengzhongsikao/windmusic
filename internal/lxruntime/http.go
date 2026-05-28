@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -72,6 +73,7 @@ func (h *httpClient) doRequest(ctx context.Context, reqURL string, options map[s
 }
 
 func (h *httpClient) perform(ctx context.Context, reqURL string, options map[string]interface{}) (map[string]interface{}, error) {
+	startedAt := time.Now()
 	method := strings.ToUpper(stringValue(options["method"], "GET"))
 	timeout := time.Duration(intValue(options["timeout"], 30)) * time.Second
 	if timeout <= 0 {
@@ -126,6 +128,7 @@ func (h *httpClient) perform(ctx context.Context, reqURL string, options map[str
 
 	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
+		log.Printf("[后端:http] 构建请求失败 method=%s url=%s err=%v elapsed=%s", method, reqURL, err, time.Since(startedAt))
 		return nil, err
 	}
 	for key, value := range headers {
@@ -134,12 +137,15 @@ func (h *httpClient) perform(ctx context.Context, reqURL string, options map[str
 
 	resp, err := client.Do(req)
 	if err != nil {
+		log.Printf("[后端:http] 请求失败 method=%s url=%s err=%v elapsed=%s", method, reqURL, err, time.Since(startedAt))
 		return nil, err
 	}
 	defer resp.Body.Close()
+	log.Printf("[后端:http] 已收到响应头 method=%s url=%s status=%d elapsed=%s", method, reqURL, resp.StatusCode, time.Since(startedAt))
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("[后端:http] 读取响应体失败 method=%s url=%s status=%d err=%v elapsed=%s", method, reqURL, resp.StatusCode, err, time.Since(startedAt))
 		return nil, err
 	}
 
@@ -159,6 +165,7 @@ func (h *httpClient) perform(ctx context.Context, reqURL string, options map[str
 		"body":          decodeBody(raw, resp.Header.Get("Content-Type")),
 	}
 
+	log.Printf("[后端:http] 请求完成 method=%s url=%s status=%d bytes=%d elapsed=%s", method, reqURL, resp.StatusCode, len(raw), time.Since(startedAt))
 	return respObj, nil
 }
 
@@ -243,6 +250,6 @@ func decodeBufferInput(value interface{}) ([]byte, error) {
 	case []byte:
 		return v, nil
 	default:
-		return nil, fmt.Errorf("unsupported buffer input")
+		return nil, fmt.Errorf("不支持的缓冲区输入")
 	}
 }

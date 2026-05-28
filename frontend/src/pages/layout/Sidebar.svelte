@@ -2,11 +2,11 @@
   左侧导航：主导航、我的音乐、歌单列表；通过 hash 路由高亮当前项。
 -->
 <script lang="ts">
-  import { Music, Home, ListMusic, Trophy, Heart, Clock, FolderOpen, CirclePlus } from '@lucide/svelte';
+  import { Music, House, ListMusic, Trophy, Heart, Clock, FolderOpen, CirclePlus } from '@lucide/svelte';
   import { link } from 'svelte-spa-router';
 
   const menuItems = [
-    { id: 'home', label: '首页', icon: Home, path: '/' },
+    { id: 'home', label: '首页', icon: House, path: '/' },
     { id: 'recommend', label: '推荐歌单', icon: ListMusic, path: '/recommend' },
     { id: 'ranking', label: '排行榜', icon: Trophy, path: '/ranking' },
   ];

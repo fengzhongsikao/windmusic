@@ -3,7 +3,17 @@
 -->
 <script lang="ts">
   import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
-  import { player, togglePlayerPlayback, openImmersiveView } from '@/stores/player.svelte';
+  import {
+    player,
+    togglePlayerPlayback,
+    openImmersiveView,
+    playNextTrack,
+    playPreviousTrack,
+    toggleShuffleMode,
+    cycleRepeatMode,
+    setPlayerVolume,
+    togglePlayerMuted,
+  } from '@/stores/player.svelte';
   import { fetchCoverUrl } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
   import {
@@ -20,21 +30,21 @@
 
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
-  let volume = $state(75);
-  let isMuted = $state(false);
-  let isShuffled = $state(false);
-  let repeatMode: 'off' | 'all' | 'one' = $state('off');
+  let volume = $derived(player.volume);
+  let isMuted = $derived(player.isMuted);
+  let isShuffled = $derived(player.isShuffled);
+  let repeatMode = $derived(player.repeatMode);
 
   function togglePlay() {
     togglePlayerPlayback();
   }
 
   function toggleMute() {
-    isMuted = !isMuted;
+    togglePlayerMuted();
   }
 
   function toggleShuffle() {
-    isShuffled = !isShuffled;
+    toggleShuffleMode();
   }
 
   function openSongDetail() {
@@ -50,9 +60,7 @@
   }
 
   function toggleRepeat() {
-    const modes: ('off' | 'all' | 'one')[] = ['off', 'all', 'one'];
-    const currentIndex = modes.indexOf(repeatMode);
-    repeatMode = modes[(currentIndex + 1) % modes.length];
+    cycleRepeatMode();
   }
 
   function formatTime(seconds: number): string {
@@ -94,7 +102,7 @@
   }
 
   $effect(() => {
-    setAudioVolume(volume, isMuted);
+    setAudioVolume(player.volume, player.isMuted);
   });
 
   $effect(() => {
@@ -126,8 +134,7 @@
 
   function handleVolumeClick(e: MouseEvent) {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    volume = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-    isMuted = false;
+    setPlayerVolume(((e.clientX - rect.left) / rect.width) * 100);
   }
 
   function handleVolumeKeydown(e: KeyboardEvent) {
@@ -136,24 +143,20 @@
       case 'ArrowLeft':
       case 'ArrowDown':
         e.preventDefault();
-        isMuted = false;
-        volume = Math.max(0, volume - step);
+        setPlayerVolume(player.volume - step);
         break;
       case 'ArrowRight':
       case 'ArrowUp':
         e.preventDefault();
-        isMuted = false;
-        volume = Math.min(100, volume + step);
+        setPlayerVolume(player.volume + step);
         break;
       case 'Home':
         e.preventDefault();
-        isMuted = false;
-        volume = 0;
+        setPlayerVolume(0);
         break;
       case 'End':
         e.preventDefault();
-        isMuted = false;
-        volume = 100;
+        setPlayerVolume(100);
         break;
     }
   }
@@ -220,7 +223,7 @@
       >
         <Shuffle size={16} />
       </button>
-      <button type="button" class="ctrl-btn" title="上一首">
+      <button type="button" class="ctrl-btn" title="上一首" onclick={() => playPreviousTrack()}>
         <SkipBack size={18} />
       </button>
       <button type="button" class="ctrl-btn play-btn" onclick={togglePlay} title={player.isPlaying ? '暂停' : '播放'}>
@@ -230,7 +233,7 @@
           <Play size={18} />
         {/if}
       </button>
-      <button type="button" class="ctrl-btn" title="下一首">
+      <button type="button" class="ctrl-btn" title="下一首" onclick={() => playNextTrack()}>
         <SkipForward size={18} />
       </button>
       <button

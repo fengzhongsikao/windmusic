@@ -11,6 +11,7 @@
   import {
     player,
     setCurrentTrack,
+    setQueue,
     togglePlayByTrack,
     openImmersiveView,
   } from '@/stores/player.svelte';
@@ -238,7 +239,16 @@
   }
 
   function playTrack(track: TrackItem) {
-    togglePlayByTrack(resolvePlayerTrack(track));
+    const playerTrack = resolvePlayerTrack(track);
+    console.info('[搜索页] 点击歌曲，切换播放状态', {
+      id: playerTrack.id,
+      title: playerTrack.title,
+      artist: playerTrack.artist,
+      album: playerTrack.album,
+      coverUrl: playerTrack.coverUrl,
+      playback: playerTrack.playback,
+    });
+    togglePlayByTrack(playerTrack);
   }
 
   function openSongDetail(track: TrackItem) {
@@ -259,6 +269,25 @@
     }
     const { q, page: pageNum } = parseSearchParams(router.querystring);
     void runSearch(q, pageNum);
+  });
+
+  $effect(() => {
+    const sourceId = cachedSourceId ?? '';
+    setQueue(
+      songs.map((song) =>
+        trackItemToPlayerTrack(
+          {
+            id: song.id,
+            title: song.name,
+            artist: song.singer,
+            album: song.album,
+            duration: song.interval ?? '—',
+            coverUrl: song.img?.trim() || undefined,
+          },
+          buildPlaybackContext(song, sourceId, sourcePlatform),
+        ),
+      ),
+    );
   });
 </script>
 

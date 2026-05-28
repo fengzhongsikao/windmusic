@@ -8,13 +8,33 @@ import (
 )
 
 func awaitPromise(vm *goja.Runtime, promise goja.Value, timeout time.Duration) (goja.Value, error) {
+	value, resultCh, err := preparePromiseAwait(vm, promise)
+	if err != nil {
+		return nil, err
+	}
+	if resultCh == nil {
+		return value, nil
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			return nil, result.err
+		}
+		return result.value, nil
+	case <-time.After(timeout):
+		return nil, fmt.Errorf("promise timeout")
+	}
+}
+
+func preparePromiseAwait(vm *goja.Runtime, promise goja.Value) (goja.Value, <-chan promiseResult, error) {
 	if promise == nil || goja.IsUndefined(promise) || goja.IsNull(promise) {
-		return goja.Undefined(), nil
+		return goja.Undefined(), nil, nil
 	}
 
 	obj := promise.ToObject(vm)
 	if obj == nil {
-		return promise, nil
+		return promise, nil, nil
 	}
 
 	if thenFn, ok := goja.AssertFunction(obj.Get("then")); ok {
@@ -37,21 +57,12 @@ func awaitPromise(vm *goja.Runtime, promise goja.Value, timeout time.Duration) (
 		})
 
 		if _, err := thenFn(obj, resolve, reject); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-
-		select {
-		case result := <-resultCh:
-			if result.err != nil {
-				return nil, result.err
-			}
-			return result.value, nil
-		case <-time.After(timeout):
-			return nil, fmt.Errorf("promise timeout")
-		}
+		return goja.Undefined(), resultCh, nil
 	}
 
-	return promise, nil
+	return promise, nil, nil
 }
 
 type promiseResult struct {

@@ -6,7 +6,8 @@
   import { Button, ButtonGroup, Heading, Spinner } from 'flowbite-svelte';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { player, togglePlayByTrack } from '@/stores/player.svelte';
+  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
   import { Search as searchApi, ListSources } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
 
@@ -74,14 +75,23 @@
     })),
   );
 
+  function resolvePlayerTrack(track: TrackItem) {
+    const song = songs.find((item) => String(item.id) === String(track.id));
+    const sourceId = cachedSourceId ?? '';
+    return trackItemToPlayerTrack(track, buildPlaybackContext(song, sourceId, ''));
+  }
+
   function playTrack(track: TrackItem) {
-    togglePlayByTrack({
-      id: track.id,
-      title: track.title,
-      artist: track.artist,
-      album: track.album,
-      coverUrl: track.coverUrl,
+    const playerTrack = resolvePlayerTrack(track);
+    console.info('[发现页] 点击歌曲，切换播放状态', {
+      id: playerTrack.id,
+      title: playerTrack.title,
+      artist: playerTrack.artist,
+      album: playerTrack.album,
+      coverUrl: playerTrack.coverUrl,
+      playback: playerTrack.playback,
     });
+    togglePlayByTrack(playerTrack);
   }
 
   async function runRecommend(tabId: string) {
@@ -182,6 +192,25 @@
   $effect(() => {
     void runRecommend(activeTab);
     void prefetchAllTabs();
+  });
+
+  $effect(() => {
+    const sourceId = cachedSourceId ?? '';
+    setQueue(
+      songs.map((song) =>
+        trackItemToPlayerTrack(
+          {
+            id: song.id,
+            title: song.name,
+            artist: song.singer,
+            album: song.album,
+            duration: song.interval ?? '—',
+            coverUrl: song.img?.trim() || undefined,
+          },
+          buildPlaybackContext(song, sourceId, ''),
+        ),
+      ),
+    );
   });
 </script>
 

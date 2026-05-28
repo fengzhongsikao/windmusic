@@ -2,6 +2,7 @@ package lxruntime
 
 import (
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -61,7 +62,7 @@ func (r *Runtime) Init(timeout time.Duration) (*InitResult, error) {
 	_, err := r.vm.RunString(r.rawScript)
 	if err != nil {
 		r.finishInit(err)
-		return nil, fmt.Errorf("script execution failed: %w", err)
+		return nil, fmt.Errorf("脚本执行失败: %w", err)
 	}
 
 	select {
@@ -71,7 +72,7 @@ func (r *Runtime) Init(timeout time.Duration) (*InitResult, error) {
 		}
 		return &InitResult{Platforms: r.platforms}, nil
 	case <-time.After(timeout):
-		return nil, fmt.Errorf("source initialization timeout")
+		return nil, fmt.Errorf("音源初始化超时")
 	}
 }
 
@@ -104,7 +105,7 @@ func (r *Runtime) GetLyric(source string, musicInfo map[string]interface{}) (*mu
 		if str, ok := exported.(string); ok {
 			return &music.LyricInfo{Lyric: str}, nil
 		}
-		return nil, fmt.Errorf("unexpected lyric response")
+		return nil, fmt.Errorf("歌词返回格式异常")
 	}
 
 	return &music.LyricInfo{
@@ -127,17 +128,23 @@ func (r *Runtime) callRequest(source, action string, info map[string]interface{}
 		return "", err
 	}
 	if value == nil || goja.IsUndefined(value) || goja.IsNull(value) {
-		return "", fmt.Errorf("empty response for action %s", action)
+		return "", fmt.Errorf("动作 %s 返回为空", action)
 	}
-	return fmt.Sprint(value.Export()), nil
+	result := fmt.Sprint(value.Export())
+	if action == "musicUrl" {
+		log.Printf("[后端:运行时] 播放地址结果 source=%s url=%s", source, result)
+	}
+	return result, nil
 }
 
 func (r *Runtime) callRequestValue(source, action string, info map[string]interface{}) (goja.Value, error) {
+	startedAt := time.Now()
 	r.mu.Lock()
-	defer r.mu.Unlock()
 
 	if r.requestHandler == nil {
-		return nil, fmt.Errorf("source request handler not registered")
+		r.mu.Unlock()
+		log.Printf("[后端:运行时] 跳过请求 source=%s action=%s err=处理器未注册 elapsed=%s", source, action, time.Since(startedAt))
+		return nil, fmt.Errorf("音源请求处理器未注册")
 	}
 
 	payload := map[string]interface{}{
@@ -146,12 +153,41 @@ func (r *Runtime) callRequestValue(source, action string, info map[string]interf
 		"info":   info,
 	}
 
+	log.Printf("[后端:运行时] 开始请求 source=%s action=%s infoKeys=%d", source, action, len(info))
 	result, err := r.requestHandler(goja.Undefined(), r.vm.ToValue(payload))
 	if err != nil {
+		r.mu.Unlock()
+		log.Printf("[后端:运行时] 请求处理失败 source=%s action=%s err=%v elapsed=%s", source, action, err, time.Since(startedAt))
 		return nil, err
 	}
 
-	return awaitPromise(r.vm, result, 60*time.Second)
+	// 只在持锁状态下注册 Promise 回调，避免与 VM 并发访问。
+	// 实际等待阶段不持锁，确保 HTTP 回调能进入并触发 resolve/reject。
+	immediateValue, resultCh, prepareErr := preparePromiseAwait(r.vm, result)
+	r.mu.Unlock()
+	if prepareErr != nil {
+		log.Printf("[后端:运行时] 注册请求回调失败 source=%s action=%s err=%v elapsed=%s", source, action, prepareErr, time.Since(startedAt))
+		return nil, prepareErr
+	}
+
+	if resultCh == nil {
+		log.Printf("[后端:运行时] 请求完成 source=%s action=%s elapsed=%s", source, action, time.Since(startedAt))
+		return immediateValue, nil
+	}
+
+	select {
+	case result := <-resultCh:
+		if result.err != nil {
+			log.Printf("[后端:运行时] 等待请求结果失败 source=%s action=%s err=%v elapsed=%s", source, action, result.err, time.Since(startedAt))
+			return nil, result.err
+		}
+		log.Printf("[后端:运行时] 请求完成 source=%s action=%s elapsed=%s", source, action, time.Since(startedAt))
+		return result.value, nil
+	case <-time.After(60 * time.Second):
+		timeoutErr := fmt.Errorf("promise timeout")
+		log.Printf("[后端:运行时] 等待请求结果失败 source=%s action=%s err=%v elapsed=%s", source, action, timeoutErr, time.Since(startedAt))
+		return nil, fmt.Errorf("promise timeout")
+	}
 }
 
 func (r *Runtime) setupGlobalLX() {
@@ -235,7 +271,7 @@ func (r *Runtime) setupGlobalLX() {
 
 func (r *Runtime) handleInited(data map[string]interface{}) {
 	if status, ok := data["status"].(bool); ok && !status {
-		r.finishInit(fmt.Errorf("source initialization rejected"))
+		r.finishInit(fmt.Errorf("音源初始化被拒绝"))
 		return
 	}
 

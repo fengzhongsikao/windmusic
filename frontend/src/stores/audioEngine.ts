@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { GetMusicURL } from '../../wailsjs/go/main/App';
-import { setPlaying, type PlayerTrack } from '@/stores/player.svelte';
+import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/player.svelte';
 import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
 
 export const audioCurrentTime = writable(0);
@@ -21,6 +21,57 @@ let syncingFromAudio = false;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function resolveMusicUrl(raw: string): string {
+  const text = raw?.trim() ?? '';
+  if (!text) {
+    return '';
+  }
+  if (/^https?:\/\//i.test(text)) {
+    return text;
+  }
+
+  try {
+    const parsed = JSON.parse(text) as
+      | string
+      | {
+      code?: number;
+      msg?: string;
+      data?: unknown;
+      url?: unknown;
+    };
+    if (typeof parsed === 'string' && parsed.trim()) {
+      return parsed.trim();
+    }
+    if (typeof parsed === 'object' && parsed !== null) {
+      if (typeof parsed.data === 'string' && parsed.data.trim()) {
+        return parsed.data.trim();
+      }
+      if (typeof parsed.url === 'string' && parsed.url.trim()) {
+        return parsed.url.trim();
+      }
+      if (parsed.code !== undefined && parsed.code !== 0) {
+        throw new Error(parsed.msg || `音源返回错误 code=${parsed.code}`);
+      }
+    }
+  } catch {
+    return text;
+  }
+
+  return '';
+}
+
+function normalizePlayableUrl(url: string): string {
+  const text = url.trim();
+  if (!text) {
+    return '';
+  }
+  // 在 WebView/浏览器环境中，http 音频有时会被拦截；优先升级为 https。
+  if (text.startsWith('http://')) {
+    return `https://${text.slice('http://'.length)}`;
+  }
+  return text;
 }
 
 function updateTimeState() {
@@ -72,16 +123,25 @@ async function loadAudioForTrack(track: PlayerTrack) {
       return;
     }
 
-    const trimmed = url?.trim();
-    if (!trimmed) {
+    console.info('前端[音频引擎] 获取播放地址结果', {
+      title: track.title,
+      artist: track.artist,
+      platform: ctx.platform,
+      sourceId: ctx.sourceId,
+      musicUrl: url,
+    });
+
+    const resolved = resolveMusicUrl(url);
+    const playableUrl = normalizePlayableUrl(resolved);
+    if (!playableUrl) {
       audio.removeAttribute('src');
       audio.load();
       audioError.set('未获取到播放地址');
       return;
     }
 
-    if (audio.src !== trimmed) {
-      audio.src = trimmed;
+    if (audio.src !== playableUrl) {
+      audio.src = playableUrl;
       audio.load();
     }
 
@@ -115,6 +175,36 @@ function attachAudioListeners(el: HTMLAudioElement) {
     audioReady.set(true);
   });
   el.addEventListener('durationchange', updateTimeState);
+  el.addEventListener('canplay', () => {
+    audioError.set('');
+  });
+  el.addEventListener('error', () => {
+    const mediaError = el.error;
+    if (!mediaError) {
+      audioError.set('音频加载失败');
+      return;
+    }
+    const codeLabel =
+      mediaError.code === MediaError.MEDIA_ERR_ABORTED
+        ? '播放被中止'
+        : mediaError.code === MediaError.MEDIA_ERR_NETWORK
+          ? '网络错误'
+          : mediaError.code === MediaError.MEDIA_ERR_DECODE
+            ? '音频解码失败'
+            : mediaError.code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED
+              ? '音频地址不可用'
+              : '未知错误';
+    const message = `音频播放失败：${codeLabel}`;
+    console.error('[音频引擎] audio 元素错误', {
+      code: mediaError.code,
+      message: mediaError.message,
+      src: el.currentSrc || el.src,
+    });
+    audioError.set(message);
+    syncingFromAudio = true;
+    setPlaying(false);
+    syncingFromAudio = false;
+  });
 
   el.addEventListener('play', () => {
     syncingFromAudio = true;
@@ -133,6 +223,18 @@ function attachAudioListeners(el: HTMLAudioElement) {
   });
 
   el.addEventListener('ended', () => {
+    if (player.repeatMode === 'one') {
+      el.currentTime = 0;
+      void el.play().catch(() => {
+        syncingFromAudio = true;
+        setPlaying(false);
+        syncingFromAudio = false;
+      });
+      return;
+    }
+    if (playNextTrack(true)) {
+      return;
+    }
     syncingFromAudio = true;
     setPlaying(false);
     syncingFromAudio = false;
