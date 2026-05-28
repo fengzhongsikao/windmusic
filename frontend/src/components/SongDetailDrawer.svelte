@@ -59,8 +59,8 @@
       role="dialog"
       aria-modal="true"
       aria-label="正在播放"
-      in:fly={{ y: '100%', duration: 400, opacity: 1 }}
-      out:fly={{ y: '100%', duration: 340, opacity: 1 }}
+      in:fly={{ y: '100%', duration: 120, opacity: 1 }}
+      out:fly={{ y: '100%', duration: 90, opacity: 1 }}
     >
       <header class="detail-top">
         <button
