@@ -10,6 +10,7 @@
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/audioEngine';
   import { fetchFavorites } from '@/lib/wailsPlayer';
+  import { fetchPlaylists } from '@/lib/playlists';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
@@ -22,6 +23,7 @@
 
   onMount(() => {
     void fetchFavorites().catch(() => {});
+    void fetchPlaylists().catch(() => {});
   });
 </script>
 

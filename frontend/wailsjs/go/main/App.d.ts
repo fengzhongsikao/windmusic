@@ -4,7 +4,13 @@ import {music} from '../models';
 
 export function AddFavorite(arg1:music.FavoriteSong):Promise<void>;
 
+export function AddPlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
+
 export function ClearRecent():Promise<void>;
+
+export function CreatePlaylist(arg1:string):Promise<music.UserPlaylist>;
+
+export function DeletePlaylist(arg1:string):Promise<void>;
 
 export function GetLyric(arg1:string,arg2:string,arg3:string):Promise<music.LyricInfo>;
 
@@ -12,17 +18,23 @@ export function GetMusicURL(arg1:string,arg2:string,arg3:string,arg4:string):Pro
 
 export function GetPic(arg1:string,arg2:string,arg3:string):Promise<string>;
 
+export function GetPlaylist(arg1:string):Promise<music.UserPlaylist>;
+
 export function GetSourceDataDir():Promise<string>;
 
 export function IsFavorite(arg1:music.FavoriteSong):Promise<boolean>;
 
 export function ListFavorites():Promise<Array<music.FavoriteSong>>;
 
+export function ListPlaylists():Promise<Array<music.UserPlaylist>>;
+
 export function ListRecent():Promise<Array<music.RecentSong>>;
 
 export function RecordRecent(arg1:music.RecentSong):Promise<void>;
 
 export function RemoveFavorite(arg1:music.FavoriteSong):Promise<void>;
+
+export function RemovePlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
 
 export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
 

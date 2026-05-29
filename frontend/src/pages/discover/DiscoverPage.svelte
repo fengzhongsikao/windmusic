@@ -240,7 +240,13 @@
       <p>正在加载推荐…</p>
     </div>
   {:else}
-    <TrackList {tracks} activeId={currentSongId} isPlaying={player.isPlaying} onSelect={playTrack} />
+    <TrackList
+      {tracks}
+      activeId={currentSongId}
+      isPlaying={player.isPlaying}
+      onSelect={playTrack}
+      resolvePlayerTrack={resolvePlayerTrack}
+    />
   {/if}
 </div>
 

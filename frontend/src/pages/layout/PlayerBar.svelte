@@ -17,6 +17,7 @@
     togglePlayerMuted,
   } from '@/stores/player.svelte';
   import PlayQueuePanel from '@/components/PlayQueuePanel.svelte';
+  import AddToPlaylistMenu from '@/components/AddToPlaylistMenu.svelte';
   import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
   import {
@@ -198,17 +199,24 @@
       </button>
       <div class="song-artist">{player.currentSong.artist}</div>
     </div>
-    <button
-      type="button"
-      class="like-btn"
-      class:active={isFavorite}
-      disabled={favoritePending}
-      onclick={toggleFavorite}
-      title={isFavorite ? '取消喜欢' : '喜欢'}
-      aria-label={isFavorite ? '取消喜欢' : '喜欢'}
-    >
-      <Heart size={18} />
-    </button>
+    <div class="song-actions">
+      <button
+        type="button"
+        class="like-btn"
+        class:active={isFavorite}
+        disabled={favoritePending}
+        onclick={toggleFavorite}
+        title={isFavorite ? '取消喜欢' : '喜欢'}
+        aria-label={isFavorite ? '取消喜欢' : '喜欢'}
+      >
+        <Heart size={18} />
+      </button>
+      <AddToPlaylistMenu
+        track={player.currentSong}
+        immersive={barImmersive}
+        triggerClass="like-btn"
+      />
+    </div>
   </div>
 
   <div class="player-controls">
@@ -451,6 +459,13 @@
     text-overflow: ellipsis;
   }
 
+  .song-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
   .like-btn {
     background: none;
     border: none;
@@ -461,6 +476,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  :global(.add-playlist-trigger:hover) {
+    color: #667eea;
   }
 
   .like-btn:hover {

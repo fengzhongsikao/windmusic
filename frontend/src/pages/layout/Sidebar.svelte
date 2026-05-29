@@ -2,8 +2,18 @@
   左侧导航：主导航、我的音乐、歌单列表；通过 hash 路由高亮当前项。
 -->
 <script lang="ts">
-  import { Music, House, ListMusic, Trophy, Heart, Clock, FolderOpen, CirclePlus } from '@lucide/svelte';
-  import { link } from 'svelte-spa-router';
+  import { onMount } from 'svelte';
+  import { Music, House, ListMusic, Trophy, Heart, Clock, FolderOpen, Trash2 } from '@lucide/svelte';
+  import { link, push } from 'svelte-spa-router';
+  import CreatePlaylistMenu from '@/components/CreatePlaylistMenu.svelte';
+  import {
+    deleteUserPlaylist,
+    fetchPlaylists,
+    onPlaylistsChanged,
+    playlistActionErrorMessage,
+    type UserPlaylist,
+  } from '@/lib/playlists';
+  import { error as toastError } from '@/stores/toast';
 
   const menuItems = [
     { id: 'home', label: '首页', icon: House, path: '/' },
@@ -17,13 +27,15 @@
     { id: 'local', label: '本地音乐', icon: FolderOpen, path: '/local' },
   ];
 
-  const playlists = [
-    { id: 'pl1', label: '深夜放松' },
-    { id: 'pl2', label: '工作专注' },
-    { id: 'pl3', label: '运动节拍' },
-  ];
+  let playlists = $state<UserPlaylist[]>([]);
+  let deletingId = $state('');
+  let pendingDelete = $state<UserPlaylist | null>(null);
 
   let currentPath = $state(window.location.hash.slice(1) || '/');
+
+  function syncCurrentPath() {
+    currentPath = window.location.hash.slice(1) || '/';
+  }
 
   function isActive(path: string): boolean {
     if (path === '/') {
@@ -32,13 +44,69 @@
     return currentPath === path;
   }
 
+  function isPlaylistActive(id: string): boolean {
+    return currentPath === `/playlist/${id}`;
+  }
+
+  function playlistPath(id: string): string {
+    return `/playlist/${id}`;
+  }
+
   function handleNavigation(path: string) {
     currentPath = path;
   }
 
-  function createPlaylist() {
-    // TODO: 新建歌单
+  async function loadPlaylists(force = false) {
+    try {
+      playlists = await fetchPlaylists({ force });
+    } catch {
+      playlists = [];
+    }
   }
+
+  function openDeleteDialog(pl: UserPlaylist, e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (deletingId) return;
+    pendingDelete = pl;
+  }
+
+  function closeDeleteDialog() {
+    if (deletingId) return;
+    pendingDelete = null;
+  }
+
+  async function confirmDeletePlaylist() {
+    const pl = pendingDelete;
+    if (!pl || deletingId) return;
+
+    deletingId = pl.id;
+    try {
+      await deleteUserPlaylist(pl.id);
+      pendingDelete = null;
+      if (isPlaylistActive(pl.id)) {
+        push('/');
+      }
+      await loadPlaylists(true);
+    } catch (err) {
+      toastError(playlistActionErrorMessage(err, '删除歌单失败'));
+    } finally {
+      deletingId = '';
+    }
+  }
+
+  onMount(() => {
+    syncCurrentPath();
+    window.addEventListener('hashchange', syncCurrentPath);
+    void loadPlaylists();
+    const stopPlaylists = onPlaylistsChanged(() => {
+      void loadPlaylists(true);
+    });
+    return () => {
+      window.removeEventListener('hashchange', syncCurrentPath);
+      stopPlaylists();
+    };
+  });
 </script>
 
 <div class="sidebar">
@@ -88,28 +156,75 @@
   <div class="nav-section">
     <div class="section-header">
       <div class="section-title">创建的歌单</div>
-      <button
-        type="button"
-        class="add-playlist-btn"
-        title="新建歌单"
-        aria-label="新建歌单"
-        onclick={createPlaylist}
-      >
-        <CirclePlus size={16} />
-      </button>
+      <CreatePlaylistMenu onCreated={() => void loadPlaylists(true)} />
     </div>
-    {#each playlists as pl}
-      <button
-        class="nav-item playlist-item"
-      >
-        <span class="nav-icon">
-          <Music size={16} />
-        </span>
-        <span class="nav-label">{pl.label}</span>
-      </button>
-    {/each}
+    {#if playlists.length === 0}
+      <p class="playlist-empty">点击右侧 + 创建歌单</p>
+    {:else}
+      {#each playlists as pl (pl.id)}
+        <div
+          class="playlist-row"
+          class:active={isPlaylistActive(pl.id)}
+          class:deleting={deletingId === pl.id}
+        >
+          <a
+            href={playlistPath(pl.id)}
+            use:link
+            class="nav-item playlist-item"
+            class:active={isPlaylistActive(pl.id)}
+            title={pl.name}
+            onclick={() => handleNavigation(playlistPath(pl.id))}
+          >
+            <span class="nav-icon">
+              <Music size={16} />
+            </span>
+            <span class="nav-label">{pl.name}</span>
+            <span class="playlist-count">{pl.songCount}</span>
+          </a>
+          <button
+            type="button"
+            class="playlist-delete-btn"
+            title="删除歌单"
+            aria-label={`删除歌单 ${pl.name}`}
+            disabled={deletingId === pl.id}
+            onclick={(e) => openDeleteDialog(pl, e)}
+            onmousedown={(e) => e.stopPropagation()}
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      {/each}
+    {/if}
   </div>
 </div>
+
+{#if pendingDelete}
+  <div class="dialog-backdrop" role="presentation" onclick={closeDeleteDialog}>
+    <div
+      class="alert-dialog"
+      role="alertdialog"
+      aria-modal="true"
+      aria-labelledby="delete-playlist-sidebar-title"
+      onclick={(e) => e.stopPropagation()}
+    >
+      <h3 id="delete-playlist-sidebar-title">删除歌单？</h3>
+      <p>将永久删除「{pendingDelete.name}」及其中的全部歌曲，此操作不可恢复。</p>
+      <div class="dialog-actions">
+        <button type="button" class="btn dialog-btn" onclick={closeDeleteDialog} disabled={Boolean(deletingId)}>
+          取消
+        </button>
+        <button
+          type="button"
+          class="btn dialog-btn danger"
+          disabled={Boolean(deletingId)}
+          onclick={() => void confirmDeletePlaylist()}
+        >
+          {deletingId ? '删除中…' : '确定删除'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .sidebar {
@@ -210,26 +325,159 @@
     text-overflow: ellipsis;
   }
 
-  .playlist-item {
-    font-size: 13px;
-    padding: 8px 12px;
+  .playlist-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    border-radius: 8px;
   }
 
-  .add-playlist-btn {
+  .playlist-row:hover {
+    background: rgba(0, 0, 0, 0.04);
+  }
+
+  .playlist-row.active {
+    background: rgba(102, 126, 234, 0.1);
+  }
+
+  .playlist-row.deleting {
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .playlist-item {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    padding: 8px 4px 8px 12px;
+  }
+
+  .playlist-row:hover .playlist-item,
+  .playlist-row.active .playlist-item {
+    background: transparent;
+  }
+
+  .playlist-count {
+    margin-left: auto;
+    font-size: 11px;
+    color: #aaa;
+    flex-shrink: 0;
+  }
+
+  .playlist-row.active .playlist-count {
+    color: #667eea;
+  }
+
+  .playlist-delete-btn {
+    position: relative;
+    z-index: 2;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 2px;
+    width: 28px;
+    height: 28px;
+    margin-right: 4px;
+    padding: 0;
     border: none;
+    border-radius: 6px;
     background: transparent;
-    color: #999;
+    color: #bbb;
     cursor: pointer;
-    border-radius: 4px;
-    transition: all 0.2s ease;
+    flex-shrink: 0;
+    opacity: 0.45;
+    pointer-events: auto;
+    transition:
+      opacity 0.15s ease,
+      color 0.15s ease,
+      background 0.15s ease;
   }
 
-  .add-playlist-btn:hover {
-    color: #667eea;
-    background: rgba(102, 126, 234, 0.08);
+  .playlist-row:hover .playlist-delete-btn,
+  .playlist-delete-btn:focus-visible {
+    opacity: 1;
+  }
+
+  .playlist-delete-btn:hover:not(:disabled) {
+    color: #e74c3c;
+    background: rgba(231, 76, 60, 0.08);
+  }
+
+  .playlist-delete-btn:disabled {
+    cursor: not-allowed;
+  }
+
+  .playlist-empty {
+    margin: 0;
+    padding: 4px 12px 8px;
+    font-size: 12px;
+    color: #aaa;
+    line-height: 1.4;
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 300;
+    padding: 16px;
+  }
+
+  .alert-dialog {
+    width: min(380px, 100%);
+    border-radius: 14px;
+    background: #fff;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  }
+
+  .alert-dialog h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #111827;
+  }
+
+  .alert-dialog p {
+    margin: 8px 0 0;
+    color: #4b5563;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .dialog-actions {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .dialog-btn {
+    border-radius: 8px;
+    border: none;
+    background: #f3f4f6;
+    color: #374151;
+    padding: 8px 14px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .dialog-btn:hover:not(:disabled) {
+    background: #e5e7eb;
+  }
+
+  .dialog-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .dialog-btn.danger {
+    background: #dc2626;
+    color: #fff;
+  }
+
+  .dialog-btn.danger:hover:not(:disabled) {
+    background: #b91c1c;
   }
 </style>

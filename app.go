@@ -11,6 +11,7 @@ type App struct {
 	ctx       context.Context
 	favorites appmusic.FavoritesStore
 	recent    appmusic.RecentStore
+	playlists appmusic.PlaylistsStore
 }
 
 func NewApp() *App {
@@ -71,4 +72,28 @@ func (a *App) RemoveRecent(song models.RecentSong) error {
 
 func (a *App) ClearRecent() error {
 	return a.recent.Clear()
+}
+
+func (a *App) ListPlaylists() ([]models.UserPlaylist, error) {
+	return a.playlists.List()
+}
+
+func (a *App) CreatePlaylist(name string) (models.UserPlaylist, error) {
+	return a.playlists.Create(name)
+}
+
+func (a *App) GetPlaylist(id string) (models.UserPlaylist, error) {
+	return a.playlists.Get(id)
+}
+
+func (a *App) AddPlaylistSong(playlistID string, song models.FavoriteSong) error {
+	return a.playlists.AddSong(playlistID, song)
+}
+
+func (a *App) RemovePlaylistSong(playlistID string, song models.FavoriteSong) error {
+	return a.playlists.RemoveSong(playlistID, song)
+}
+
+func (a *App) DeletePlaylist(id string) error {
+	return a.playlists.Delete(id)
 }

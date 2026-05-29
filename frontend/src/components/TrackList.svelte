@@ -1,6 +1,8 @@
 <script lang="ts">
   import { Music, Play } from '@lucide/svelte';
+  import AddToPlaylistMenu from '@/components/AddToPlaylistMenu.svelte';
   import type { TrackItem } from '@/lib/track';
+  import type { PlayerTrack } from '@/stores/player.svelte';
 
   interface Props {
     tracks: TrackItem[];
@@ -11,6 +13,7 @@
     onSelect?: (track: TrackItem) => void;
     onOpenDetail?: (track: TrackItem) => void;
     onCoverError?: (url: string) => void;
+    resolvePlayerTrack?: (track: TrackItem) => PlayerTrack;
     ariaLabel?: string;
     selectionMode?: boolean;
     selectedIds?: Record<string, true>;
@@ -26,11 +29,14 @@
     onSelect,
     onOpenDetail,
     onCoverError,
+    resolvePlayerTrack,
     ariaLabel = '歌曲列表',
     selectionMode = false,
     selectedIds = {},
     onToggleSelect,
   }: Props = $props();
+
+  const showPlaylistAction = $derived(Boolean(resolvePlayerTrack));
 
   function handleOpenDetail(e: MouseEvent, track: TrackItem) {
     e.stopPropagation();
@@ -52,7 +58,12 @@
 </script>
 
 <div class="track-list" role="table" aria-label={ariaLabel}>
-  <div class="track-list-header" class:selection-mode={selectionMode} role="row">
+  <div
+    class="track-list-header"
+    class:selection-mode={selectionMode}
+    class:has-actions={showPlaylistAction}
+    role="row"
+  >
     {#if selectionMode}
       <span class="col-select" role="columnheader"></span>
     {/if}
@@ -60,6 +71,9 @@
     <span class="col-track" role="columnheader">歌曲</span>
     <span class="col-album" role="columnheader">专辑</span>
     <span class="col-duration" role="columnheader">时长</span>
+    {#if showPlaylistAction}
+      <span class="col-actions" role="columnheader" aria-hidden="true"></span>
+    {/if}
   </div>
 
   {#each tracks as track, index (track.listKey ?? track.id)}
@@ -67,6 +81,7 @@
       class="track-row"
       class:active={isActive(track)}
       class:selection-mode={selectionMode}
+      class:has-actions={showPlaylistAction}
       role="row"
       tabindex="0"
       onclick={() => {
@@ -143,6 +158,15 @@
 
       <span class="col-album" role="cell">{track.album}</span>
       <span class="col-duration" role="cell">{track.duration}</span>
+      {#if resolvePlayerTrack}
+        <span class="col-actions" role="cell">
+          <AddToPlaylistMenu
+            track={resolvePlayerTrack(track)}
+            triggerClass="track-row-action-btn"
+            placement="bottom-end"
+          />
+        </span>
+      {/if}
     </div>
   {/each}
 </div>
@@ -164,9 +188,19 @@
     text-align: left;
   }
 
+  .track-list-header.has-actions,
+  .track-row.has-actions {
+    grid-template-columns: 3rem minmax(0, 1fr) minmax(8rem, 28%) 4.5rem 2.25rem;
+  }
+
   .track-list-header.selection-mode,
   .track-row.selection-mode {
     grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 28%) 4.5rem;
+  }
+
+  .track-list-header.selection-mode.has-actions,
+  .track-row.selection-mode.has-actions {
+    grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 28%) 4.5rem 2.25rem;
   }
 
   .col-select {
@@ -286,6 +320,53 @@
     color: #999;
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  .col-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .track-row:hover .col-actions,
+  .track-row:focus-within .col-actions,
+  .track-row.active .col-actions {
+    opacity: 1;
+  }
+
+  :global(.track-row-action-btn) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #bbb;
+    cursor: pointer;
+    transition:
+      color 0.15s ease,
+      background-color 0.15s ease;
+  }
+
+  :global(.track-row-action-btn:hover),
+  :global(.track-row-action-btn[data-state='open']) {
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.1);
+  }
+
+  .track-row.active :global(.track-row-action-btn) {
+    color: #9aa8f0;
+  }
+
+  .track-row.active :global(.track-row-action-btn:hover),
+  .track-row.active :global(.track-row-action-btn[data-state='open']) {
+    color: #5b6ee8;
+    background: rgba(91, 110, 232, 0.14);
   }
 
   .track-row.active .col-index,

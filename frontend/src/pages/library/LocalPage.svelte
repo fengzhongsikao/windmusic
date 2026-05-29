@@ -18,10 +18,6 @@
 </script>
 
 <div class="local-page">
-  <h2 class="section-title">
-    <FolderOpen size={28} />
-    本地音乐
-  </h2>
 
   <div class="folder-section">
     <h3 class="sub-title">音乐文件夹</h3>

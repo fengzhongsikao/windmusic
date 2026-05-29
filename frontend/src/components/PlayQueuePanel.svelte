@@ -103,7 +103,7 @@
           </Menu.ItemGroupLabel>
 
           {#if queueCount === 0}
-            <p class="queue-empty">当前没有播放列表，在搜索或发现页播放歌曲后会自动加入。</p>
+            <p class="queue-empty">当前播放队列为空。点击列表中的歌曲或「播放全部」可加入待播队列。</p>
           {:else}
             {#each player.queue as track, index (trackKey(track, index))}
               {@const active = isCurrentTrack(track)}

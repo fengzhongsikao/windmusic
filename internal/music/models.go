@@ -76,6 +76,13 @@ type FavoriteSong struct {
 	MetaJSON string `json:"metaJson,omitempty"`
 }
 
+type UserPlaylist struct {
+	ID        string         `json:"id"`
+	Name      string         `json:"name"`
+	CreatedAt time.Time      `json:"createdAt"`
+	Songs     []FavoriteSong `json:"songs,omitempty"`
+}
+
 type RecentSong struct {
 	ID       string    `json:"id"`
 	Title    string    `json:"title"`

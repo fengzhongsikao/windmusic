@@ -25,6 +25,10 @@ export function error(message: string) {
   push(message, 'error');
 }
 
+export function success(message: string) {
+  push(message, 'success');
+}
+
 export function dismiss(id: number) {
   toastsStore.update((items) => items.filter((item) => item.id !== id));
 }

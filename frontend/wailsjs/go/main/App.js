@@ -6,8 +6,20 @@ export function AddFavorite(arg1) {
   return window['go']['main']['App']['AddFavorite'](arg1);
 }
 
+export function AddPlaylistSong(arg1, arg2) {
+  return window['go']['main']['App']['AddPlaylistSong'](arg1, arg2);
+}
+
 export function ClearRecent() {
   return window['go']['main']['App']['ClearRecent']();
+}
+
+export function CreatePlaylist(arg1) {
+  return window['go']['main']['App']['CreatePlaylist'](arg1);
+}
+
+export function DeletePlaylist(arg1) {
+  return window['go']['main']['App']['DeletePlaylist'](arg1);
 }
 
 export function GetLyric(arg1, arg2, arg3) {
@@ -22,6 +34,10 @@ export function GetPic(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetPic'](arg1, arg2, arg3);
 }
 
+export function GetPlaylist(arg1) {
+  return window['go']['main']['App']['GetPlaylist'](arg1);
+}
+
 export function GetSourceDataDir() {
   return window['go']['main']['App']['GetSourceDataDir']();
 }
@@ -34,6 +50,10 @@ export function ListFavorites() {
   return window['go']['main']['App']['ListFavorites']();
 }
 
+export function ListPlaylists() {
+  return window['go']['main']['App']['ListPlaylists']();
+}
+
 export function ListRecent() {
   return window['go']['main']['App']['ListRecent']();
 }
@@ -44,6 +64,10 @@ export function RecordRecent(arg1) {
 
 export function RemoveFavorite(arg1) {
   return window['go']['main']['App']['RemoveFavorite'](arg1);
+}
+
+export function RemovePlaylistSong(arg1, arg2) {
+  return window['go']['main']['App']['RemovePlaylistSong'](arg1, arg2);
 }
 
 export function RemoveRecent(arg1) {

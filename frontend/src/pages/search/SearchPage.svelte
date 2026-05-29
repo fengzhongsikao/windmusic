@@ -337,6 +337,7 @@
         {brokenCovers}
         onSelect={playTrack}
         onCoverError={markCoverBroken}
+        {resolvePlayerTrack}
         ariaLabel="搜索结果"
       />
 
