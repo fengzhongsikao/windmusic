@@ -1,15 +1,19 @@
 <!--
   首页发现：按分类 Tab 展示推荐歌曲。
-  数据走 App.Search（与搜索页同一后端），带 session 缓存与 Tab 预取。
+  数据走 App.Search（与搜索页同一后端），推荐结果缓存在 Go 端内存，带 Tab 预取。
 -->
 <script lang="ts">
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/lib/meting';
+  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/stores/meting.svelte';
   import PlayAllButton from '@/components/PlayAllButton.svelte';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
-  import { Search as searchApi } from '../../../wailsjs/go/main/App';
+  import {
+    GetDiscoverRecommendCache,
+    Search as searchApi,
+    SetDiscoverRecommendCache,
+  } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
 
   let activeTab = $state('recommend');
@@ -33,8 +37,6 @@
   };
 
   const RECOMMEND_LIMIT = 10;
-  const CACHE_TTL_MS = 5 * 60 * 1000;
-  const CACHE_PREFIX = 'discover-recommend:';
 
   let songs = $state<music.SongItem[]>([]);
   let loading = $state(false);
@@ -46,11 +48,6 @@
   let recommendRequestId = 0;
   const inFlightRequests = new Map<string, Promise<music.SongItem[]>>();
   let hasPrefetchedTabs = false;
-
-  type RecommendCacheEntry = {
-    songs: music.SongItem[];
-    cachedAt: number;
-  };
 
   async function resolveSourceId(): Promise<string> {
     const metingURL = getMetingURL();
@@ -115,23 +112,17 @@
   async function runRecommend(tabId: string) {
     const keyword = CATEGORY_KEYWORDS[tabId] ?? CATEGORY_KEYWORDS.recommend;
     const requestId = ++recommendRequestId;
-    const cacheKey = `${CACHE_PREFIX}${tabId}`;
 
-    if (typeof window !== 'undefined') {
-      const raw = window.sessionStorage.getItem(cacheKey);
-      if (raw) {
-        try {
-          const parsed = JSON.parse(raw) as RecommendCacheEntry;
-          if (Array.isArray(parsed.songs) && Date.now()- parsed.cachedAt < CACHE_TTL_MS) {
-            songs = parsed.songs;
-            error = '';
-            loading = false;
-            return;
-          }
-        } catch {
-          // ignore malformed cache and continue fetching
-        }
+    try {
+      const cached = await GetDiscoverRecommendCache(tabId);
+      if (cached.hit && Array.isArray(cached.songs)) {
+        songs = cached.songs;
+        error = '';
+        loading = false;
+        return;
       }
+    } catch {
+      // ignore cache errors and fetch
     }
 
     loading = true;
@@ -151,8 +142,7 @@
   }
 
   async function getRecommendSongs(tabId: string, keyword: string): Promise<music.SongItem[]> {
-    const cacheKey = `${CACHE_PREFIX}${tabId}`;
-    const existing = inFlightRequests.get(cacheKey);
+    const existing = inFlightRequests.get(tabId);
     if (existing) {
       return existing;
     }
@@ -161,21 +151,19 @@
       const sourceId = await resolveSourceId();
       const result = await searchApi(sourceId, resolvePlatform(), keyword, 1);
       const resultSongs = result.list ?? [];
-      if (typeof window !== 'undefined') {
-        const entry: RecommendCacheEntry = {
-          songs: resultSongs,
-          cachedAt: Date.now(),
-        };
-        window.sessionStorage.setItem(cacheKey, JSON.stringify(entry));
+      try {
+        await SetDiscoverRecommendCache(tabId, resultSongs);
+      } catch {
+        // ignore cache write errors
       }
       return resultSongs;
     })();
 
-    inFlightRequests.set(cacheKey, request);
+    inFlightRequests.set(tabId, request);
     try {
       return await request;
     } finally {
-      inFlightRequests.delete(cacheKey);
+      inFlightRequests.delete(tabId);
     }
   }
 
@@ -186,19 +174,13 @@
     hasPrefetchedTabs = true;
 
     for (const tab of tabs) {
-      const cacheKey = `${CACHE_PREFIX}${tab.id}`;
-      if (typeof window !== 'undefined') {
-        const raw = window.sessionStorage.getItem(cacheKey);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw) as RecommendCacheEntry;
-            if (Array.isArray(parsed.songs) && Date.now() - parsed.cachedAt < CACHE_TTL_MS) {
-              continue;
-            }
-          } catch {
-            // ignore malformed cache and fetch again
-          }
+      try {
+        const cached = await GetDiscoverRecommendCache(tab.id);
+        if (cached.hit) {
+          continue;
         }
+      } catch {
+        // fetch below
       }
       const keyword = CATEGORY_KEYWORDS[tab.id] ?? CATEGORY_KEYWORDS.recommend;
       void getRecommendSongs(tab.id, keyword);

@@ -122,3 +122,30 @@ type LocalCoverBatch struct {
 	Covers map[string]string `json:"covers"`
 	Paths  map[string]string `json:"paths"`
 }
+
+// LocalLibrarySnapshot is the full local library view pushed to the frontend.
+type LocalLibrarySnapshot struct {
+	Folders []string  `json:"folders"`
+	Songs   []LocalSong `json:"songs"`
+}
+
+// PlayerSettings holds persisted playback UI preferences.
+type PlayerSettings struct {
+	Volume     int    `json:"volume"`
+	Muted      bool   `json:"muted"`
+	RepeatMode string `json:"repeatMode"`
+	Shuffled   bool   `json:"shuffled"`
+}
+
+// MetingSettings holds Meting API node configuration.
+type MetingSettings struct {
+	URLs      []string `json:"urls"`
+	ActiveURL string   `json:"activeUrl"`
+	Platform  string   `json:"platform"`
+}
+
+// DiscoverRecommendCache is returned by the in-memory discover tab cache.
+type DiscoverRecommendCache struct {
+	Hit   bool       `json:"hit"`
+	Songs []SongItem `json:"songs"`
+}

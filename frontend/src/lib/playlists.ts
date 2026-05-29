@@ -7,7 +7,15 @@ import {
   RemovePlaylistSong,
 } from '../../wailsjs/go/main/App';
 import { music } from '../../wailsjs/go/models';
-import { favoriteSongKey, type FavoriteSong } from '@/lib/wailsPlayer';
+import { favoriteSongKey, type FavoriteSong } from '@/lib/favoriteSong';
+import {
+  clearPlaylistDetailCache,
+  getCachedPlaylist,
+  getPlaylists,
+  setCachedPlaylist,
+} from '@/stores/playlistsStore.svelte';
+import { PLAYLISTS_UPDATED_EVENT } from '@/stores/playlistsStore.svelte';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type UserPlaylist = {
   id: string;
@@ -17,36 +25,7 @@ export type UserPlaylist = {
   songs: FavoriteSong[];
 };
 
-const PLAYLISTS_CHANGED_EVENT = 'playlists:changed';
-
-let playlistsCache: UserPlaylist[] | null = null;
-const playlistDetailCache = new Map<string, UserPlaylist>();
-
-function normalizeSong(raw: {
-  id?: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  duration?: string;
-  coverUrl?: string;
-  sourceId?: string;
-  platform?: string;
-  metaJson?: string;
-}): FavoriteSong {
-  return {
-    id: raw.id?.trim() ?? '',
-    title: raw.title?.trim() ?? '',
-    artist: raw.artist?.trim() ?? '',
-    album: raw.album?.trim() ?? '',
-    duration: raw.duration?.trim() ?? '',
-    coverUrl: raw.coverUrl?.trim() ?? '',
-    sourceId: raw.sourceId?.trim() ?? '',
-    platform: raw.platform?.trim() ?? '',
-    metaJson: raw.metaJson?.trim() ?? '',
-  };
-}
-
-function normalizePlaylist(raw: {
+export function normalizePlaylist(raw: {
   id?: string;
   name?: string;
   createdAt?: string | { Time?: string };
@@ -74,30 +53,41 @@ function normalizePlaylist(raw: {
   };
 }
 
-function notifyPlaylistsChanged() {
-  playlistsCache = null;
-  playlistDetailCache.clear();
-  window.dispatchEvent(new CustomEvent(PLAYLISTS_CHANGED_EVENT));
+function normalizeSong(raw: {
+  id?: string;
+  title?: string;
+  artist?: string;
+  album?: string;
+  duration?: string;
+  coverUrl?: string;
+  sourceId?: string;
+  platform?: string;
+  metaJson?: string;
+}): FavoriteSong {
+  return {
+    id: raw.id?.trim() ?? '',
+    title: raw.title?.trim() ?? '',
+    artist: raw.artist?.trim() ?? '',
+    album: raw.album?.trim() ?? '',
+    duration: raw.duration?.trim() ?? '',
+    coverUrl: raw.coverUrl?.trim() ?? '',
+    sourceId: raw.sourceId?.trim() ?? '',
+    platform: raw.platform?.trim() ?? '',
+    metaJson: raw.metaJson?.trim() ?? '',
+  };
 }
 
 export function onPlaylistsChanged(listener: () => void): () => void {
-  const handler = () => listener();
-  window.addEventListener(PLAYLISTS_CHANGED_EVENT, handler);
-  return () => window.removeEventListener(PLAYLISTS_CHANGED_EVENT, handler);
+  return EventsOn(PLAYLISTS_UPDATED_EVENT, () => listener());
 }
 
+/** 读取歌单列表；默认用内存状态，force 时从 Go 重新拉取 */
 export async function fetchPlaylists(options?: { force?: boolean }): Promise<UserPlaylist[]> {
-  if (!options?.force && playlistsCache) {
-    return playlistsCache;
+  if (!options?.force && getPlaylists().length > 0) {
+    return [...getPlaylists()];
   }
   const items = await ListPlaylists();
-  playlistsCache = items
-    .map((item) => normalizePlaylist(item))
-    .filter((item) => item.id && item.name);
-  for (const item of playlistsCache) {
-    playlistDetailCache.set(item.id, item);
-  }
-  return playlistsCache;
+  return items.map((item) => normalizePlaylist(item)).filter((item) => item.id && item.name);
 }
 
 export async function fetchPlaylist(
@@ -108,19 +98,15 @@ export async function fetchPlaylist(
   if (!playlistId) return null;
 
   if (!options?.force) {
-    const cached = playlistDetailCache.get(playlistId);
+    const cached = getCachedPlaylist(playlistId);
     if (cached) return cached;
-    if (playlistsCache) {
-      const fromList = playlistsCache.find((item) => item.id === playlistId);
-      if (fromList) return fromList;
-    }
   }
 
   try {
     const item = await GetPlaylist(playlistId);
     const playlist = normalizePlaylist(item);
     if (!playlist.id) return null;
-    playlistDetailCache.set(playlist.id, playlist);
+    setCachedPlaylist(playlist);
     return playlist;
   } catch {
     return null;
@@ -129,7 +115,6 @@ export async function fetchPlaylist(
 
 export async function createUserPlaylist(name: string): Promise<UserPlaylist> {
   const created = await CreatePlaylist(name.trim());
-  notifyPlaylistsChanged();
   return normalizePlaylist(created);
 }
 
@@ -149,17 +134,15 @@ function toWailsFavoriteSong(song: FavoriteSong): music.FavoriteSong {
 
 export async function addSongToPlaylist(playlistId: string, song: FavoriteSong): Promise<void> {
   await AddPlaylistSong(playlistId, toWailsFavoriteSong(song));
-  notifyPlaylistsChanged();
 }
 
 export async function removeSongFromPlaylist(playlistId: string, song: FavoriteSong): Promise<void> {
   await RemovePlaylistSong(playlistId, toWailsFavoriteSong(song));
-  notifyPlaylistsChanged();
 }
 
 export async function deleteUserPlaylist(playlistId: string): Promise<void> {
   await DeletePlaylist(playlistId);
-  notifyPlaylistsChanged();
+  clearPlaylistDetailCache();
 }
 
 export function playlistContainsSong(playlist: UserPlaylist, song: FavoriteSong): boolean {

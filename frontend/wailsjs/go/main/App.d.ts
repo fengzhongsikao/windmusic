@@ -4,6 +4,8 @@ import {music} from '../models';
 
 export function AddFavorite(arg1:music.FavoriteSong):Promise<void>;
 
+export function AddMetingURL(arg1:string):Promise<void>;
+
 export function AddPlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
 
 export function ClearRecent():Promise<void>;
@@ -12,7 +14,11 @@ export function CreatePlaylist(arg1:string):Promise<music.UserPlaylist>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
 
+export function GetDiscoverRecommendCache(arg1:string):Promise<music.DiscoverRecommendCache>;
+
 export function GetLocalAudioStream(arg1:string):Promise<string>;
+
+export function GetLocalLibrarySnapshot():Promise<music.LocalLibrarySnapshot>;
 
 export function GetLocalSongCovers(arg1:Array<string>):Promise<music.LocalCoverBatch>;
 
@@ -20,9 +26,13 @@ export function GetLocalSongExtras(arg1:string):Promise<music.LocalSongExtras>;
 
 export function GetLyric(arg1:string,arg2:string,arg3:string):Promise<music.LyricInfo>;
 
+export function GetMetingSettings():Promise<music.MetingSettings>;
+
 export function GetMusicURL(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
 
 export function GetPic(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function GetPlayerSettings():Promise<music.PlayerSettings>;
 
 export function GetPlaylist(arg1:string):Promise<music.UserPlaylist>;
 
@@ -48,6 +58,8 @@ export function RemoveFavorite(arg1:music.FavoriteSong):Promise<void>;
 
 export function RemoveLocalMusicFolder(arg1:string):Promise<void>;
 
+export function RemoveMetingURL(arg1:string):Promise<void>;
+
 export function RemovePlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
 
 export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
@@ -55,3 +67,11 @@ export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
 export function ScanLocalLibrary():Promise<Array<music.LocalSong>>;
 
 export function Search(arg1:string,arg2:string,arg3:string,arg4:number):Promise<music.SearchResult>;
+
+export function SetActiveMetingURL(arg1:string):Promise<void>;
+
+export function SetDiscoverRecommendCache(arg1:string,arg2:Array<music.SongItem>):Promise<void>;
+
+export function SetMetingPlatform(arg1:string):Promise<void>;
+
+export function UpdatePlayerSettings(arg1:music.PlayerSettings):Promise<void>;

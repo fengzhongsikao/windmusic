@@ -1,4 +1,4 @@
-import { getMetingURL, metingSourceId } from '@/lib/meting';
+import { getMetingURL, metingSourceId } from '@/stores/meting.svelte';
 import type { PlayerTrack } from '@/stores/player';
 
 export const DEFAULT_TRACK_ID = '2155422574';

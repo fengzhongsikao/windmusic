@@ -32,13 +32,13 @@
 │  Svelte 前端                                             │
 │  · 页面 / 组件 / 全局 stores                             │
 │  · HTMLAudioElement 实际解码与播放（audioEngine）          │
-│  · localStorage：Meting 节点列表、播放器偏好               │
+│  · 内存 $state；数据由 Go 经 Events 推送（无浏览器持久化）    │
 └───────────────────────┬─────────────────────────────────┘
                         │ Wails Bind（wailsjs/go/main/App）
 ┌───────────────────────▼─────────────────────────────────┐
 │  Go 后端（app.go → music/ → internal/musicsearch/）       │
 │  · Search / GetMusicURL / GetLyric / GetPic               │
-│  · 收藏、最近播放读写（JSON 文件）                         │
+│  · 设置、Meting、收藏、歌单、本地库等（JSON + 事件推送）     │
 └───────────────────────┬─────────────────────────────────┘
                         │ HTTP
 ┌───────────────────────▼─────────────────────────────────┐
@@ -174,13 +174,7 @@ Get-ChildItem "$env:APPDATA\windmusic"
 dir "%APPDATA%\windmusic"
 ```
 
-### 浏览器 localStorage（仅前端）
-
-| Key | 内容 |
-|-----|------|
-| `windmusic:meting-urls` | Meting 节点 URL 列表（JSON 数组） |
-| `windmusic:meting-active` | 当前使用的 Meting 节点 |
-| `windmusic:player-settings` | 音量、静音、循环、随机等 |
+应用启动时会清除旧版 `localStorage` 键（`windmusic:meting-*`、`windmusic:player-settings`），不再读取其中数据。
 
 ## 环境要求
 

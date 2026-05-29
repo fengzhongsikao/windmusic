@@ -1,24 +1,29 @@
 import {
   fetchLocalSongCovers,
-  ListLocalFolders,
-  ListLocalLibrary,
-  localSongToTrackItem,
+  GetLocalLibrarySnapshot,
   ScanLocalLibrary,
+  localSongToTrackItem,
   songInFolder,
   type LocalSong,
 } from '@/lib/localMusic';
 import type { TrackItem } from '@/lib/track';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { music } from '../../wailsjs/go/models';
 
 export const LOCAL_ALL_TAB_ID = 'all';
+
+export const LOCAL_LIBRARY_UPDATED_EVENT = 'local-library:updated';
+export const LOCAL_LIBRARY_SCANNING_EVENT = 'local-library:scanning';
 
 type LocalLibrarySnapshot = {
   folders: string[];
   songs: LocalSong[];
 };
 
-let sessionCache: LocalLibrarySnapshot | null = null;
 let coverLoadToken = 0;
 let coverPreloadStarted = false;
+let lastSongPathsKey = '';
+let syncInitialized = false;
 
 export const localLibrary = $state({
   folders: [] as string[],
@@ -58,58 +63,66 @@ export function clearLocalCoverCache() {
   localLibrary.coverByPath = {};
 }
 
+function normalizeSnapshot(raw: music.LocalLibrarySnapshot | LocalLibrarySnapshot): LocalLibrarySnapshot {
+  return {
+    folders: raw.folders ?? [],
+    songs: (raw.songs ?? []) as LocalSong[],
+  };
+}
+
 function applySnapshot(snapshot: LocalLibrarySnapshot) {
+  const pathsKey = snapshot.songs
+    .map((song) => song.filePath)
+    .sort()
+    .join('\0');
+  if (pathsKey !== lastSongPathsKey) {
+    if (lastSongPathsKey !== '') {
+      clearLocalCoverCache();
+    }
+    lastSongPathsKey = pathsKey;
+    scheduleCoverPreload(snapshot.songs.map((song) => song.filePath));
+  }
+
   localLibrary.folders = snapshot.folders;
   localLibrary.songs = snapshot.songs;
   rebuildLibraryIndex(snapshot.songs, snapshot.folders);
-  sessionCache = snapshot;
   localLibrary.loaded = true;
-  scheduleCoverPreload(snapshot.songs.map((song) => song.filePath));
 }
 
-/** 从磁盘缓存快速加载，不遍历文件夹 */
-export async function loadLocalLibraryFromCache(): Promise<LocalLibrarySnapshot> {
-  if (sessionCache) {
-    applySnapshot(sessionCache);
-    return sessionCache;
+/** 订阅后端推送；启动时拉一次快照，避免错过 startup 事件 */
+export function initLocalLibrarySync(): () => void {
+  if (syncInitialized) {
+    return () => {};
   }
+  syncInitialized = true;
+
+  const offUpdated = EventsOn(LOCAL_LIBRARY_UPDATED_EVENT, (payload: music.LocalLibrarySnapshot) => {
+    applySnapshot(normalizeSnapshot(payload));
+  });
+  const offScanning = EventsOn(LOCAL_LIBRARY_SCANNING_EVENT, (scanning: boolean) => {
+    localLibrary.scanning = Boolean(scanning);
+  });
 
   localLibrary.loading = true;
-  try {
-    const [folders, songs] = await Promise.all([ListLocalFolders(), ListLocalLibrary()]);
-    const snapshot = { folders: folders ?? [], songs: songs ?? [] };
-    applySnapshot(snapshot);
-    return snapshot;
-  } finally {
-    localLibrary.loading = false;
-  }
+  void GetLocalLibrarySnapshot()
+    .then((snapshot) => {
+      applySnapshot(normalizeSnapshot(snapshot));
+    })
+    .catch(() => {})
+    .finally(() => {
+      localLibrary.loading = false;
+    });
+
+  return () => {
+    offUpdated();
+    offScanning();
+    syncInitialized = false;
+  };
 }
 
-/** 全盘扫描（添加/移除文件夹、手动刷新时使用） */
-export async function scanLocalLibrary(): Promise<LocalLibrarySnapshot> {
-  localLibrary.scanning = true;
-  try {
-    const [folders, songs] = await Promise.all([ListLocalFolders(), ScanLocalLibrary()]);
-    const snapshot = { folders: folders ?? [], songs: songs ?? [] };
-    applySnapshot(snapshot);
-    return snapshot;
-  } finally {
-    localLibrary.scanning = false;
-  }
-}
-
-/** 进入页面：优先读缓存；仅有文件夹但尚无曲目时再后台扫描 */
-export async function ensureLocalLibrary(): Promise<void> {
-  const snapshot = await loadLocalLibraryFromCache();
-  if (snapshot.folders.length > 0 && snapshot.songs.length === 0) {
-    await scanLocalLibrary();
-  }
-}
-
-export function invalidateLocalLibrarySession() {
-  sessionCache = null;
-  localLibrary.loaded = false;
-  clearLocalCoverCache();
+/** 手动全盘扫描（后端扫描完成后通过事件更新状态） */
+export async function scanLocalLibrary(): Promise<void> {
+  await ScanLocalLibrary();
 }
 
 /** 后台批量加载封面（只读 extras 缓存，不扫盘） */
@@ -174,17 +187,5 @@ export function scheduleCoverPreload(paths: string[]): void {
 function yieldToMain(): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
-  });
-}
-
-/** 应用启动时后台预加载，进入本地音乐页时通常已就绪 */
-export function preloadLocalLibrary(): void {
-  if (sessionCache || localLibrary.loading || localLibrary.scanning) {
-    return;
-  }
-  void loadLocalLibraryFromCache().then((snapshot) => {
-    if (snapshot.folders.length > 0 && snapshot.songs.length === 0) {
-      void scanLocalLibrary();
-    }
   });
 }

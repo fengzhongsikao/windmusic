@@ -1,5 +1,6 @@
 import type { TrackItem } from '@/lib/track';
 import { createDefaultPlayerTrack } from '@/lib/defaultPlayerTrack';
+import { persistPlayerSettings } from '@/stores/playerSettings.svelte';
 
 export type ViewMode = 'normal' | 'immersive';
 
@@ -21,7 +22,6 @@ export type PlayerTrack = Pick<
 export type RepeatMode = 'off' | 'all' | 'one';
 
 const DEFAULT_VOLUME = 30;
-const SETTINGS_KEY = 'windmusic:player-settings';
 
 function sameTrack(a: PlayerTrack, b: PlayerTrack): boolean {
   const aLocal = a.playback?.localPath ?? '';
@@ -36,44 +36,6 @@ function sameTrack(a: PlayerTrack, b: PlayerTrack): boolean {
     (a.playback?.metaJson ?? '') === (b.playback?.metaJson ?? '')
   );
 }
-
-function readPersistedSettings(): {
-  volume: number;
-  muted: boolean;
-  repeatMode: RepeatMode;
-  shuffled: boolean;
-} {
-  if (typeof window === 'undefined') {
-    return { volume: DEFAULT_VOLUME, muted: false, repeatMode: 'off', shuffled: false };
-  }
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_KEY);
-    if (!raw) {
-      return { volume: DEFAULT_VOLUME, muted: false, repeatMode: 'off', shuffled: false };
-    }
-    const parsed = JSON.parse(raw) as {
-      volume?: number;
-      muted?: boolean;
-      repeatMode?: RepeatMode;
-      shuffled?: boolean;
-    };
-    const volume = Number.isFinite(parsed.volume)
-      ? Math.min(100, Math.max(0, Number(parsed.volume)))
-      : DEFAULT_VOLUME;
-    const repeatMode: RepeatMode =
-      parsed.repeatMode === 'all' || parsed.repeatMode === 'one' ? parsed.repeatMode : 'off';
-    return {
-      volume,
-      muted: Boolean(parsed.muted),
-      repeatMode,
-      shuffled: Boolean(parsed.shuffled),
-    };
-  } catch {
-    return { volume: DEFAULT_VOLUME, muted: false, repeatMode: 'off', shuffled: false };
-  }
-}
-
-const persisted = readPersistedSettings();
 
 let shuffleOrder: number[] = [];
 
@@ -134,26 +96,11 @@ export const player = $state({
   currentSong: defaultTrack,
   isPlaying: false,
   queue: [] as PlayerTrack[],
-  isShuffled: persisted.shuffled,
-  repeatMode: persisted.repeatMode as RepeatMode,
-  volume: persisted.volume,
-  isMuted: persisted.muted,
+  isShuffled: false,
+  repeatMode: 'off' as RepeatMode,
+  volume: DEFAULT_VOLUME,
+  isMuted: false,
 });
-
-function persistSettings() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  window.localStorage.setItem(
-    SETTINGS_KEY,
-    JSON.stringify({
-      volume: player.volume,
-      muted: player.isMuted,
-      repeatMode: player.repeatMode,
-      shuffled: player.isShuffled,
-    }),
-  );
-}
 
 export function openImmersiveView() {
   player.viewMode = 'immersive';
@@ -337,14 +284,14 @@ export function toggleShuffleMode() {
   } else {
     shuffleOrder = [];
   }
-  persistSettings();
+  persistPlayerSettings();
 }
 
 export function cycleRepeatMode() {
   const modes: RepeatMode[] = ['off', 'all', 'one'];
   const current = modes.indexOf(player.repeatMode);
   player.repeatMode = modes[(current + 1) % modes.length];
-  persistSettings();
+  persistPlayerSettings();
 }
 
 export function setPlayerVolume(volume: number, options?: { persist?: boolean }) {
@@ -353,11 +300,11 @@ export function setPlayerVolume(volume: number, options?: { persist?: boolean })
     player.isMuted = false;
   }
   if (options?.persist !== false) {
-    persistSettings();
+    persistPlayerSettings();
   }
 }
 
 export function togglePlayerMuted() {
   player.isMuted = !player.isMuted;
-  persistSettings();
+  persistPlayerSettings();
 }

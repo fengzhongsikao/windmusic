@@ -6,6 +6,10 @@ export function AddFavorite(arg1) {
   return window['go']['main']['App']['AddFavorite'](arg1);
 }
 
+export function AddMetingURL(arg1) {
+  return window['go']['main']['App']['AddMetingURL'](arg1);
+}
+
 export function AddPlaylistSong(arg1, arg2) {
   return window['go']['main']['App']['AddPlaylistSong'](arg1, arg2);
 }
@@ -22,8 +26,16 @@ export function DeletePlaylist(arg1) {
   return window['go']['main']['App']['DeletePlaylist'](arg1);
 }
 
+export function GetDiscoverRecommendCache(arg1) {
+  return window['go']['main']['App']['GetDiscoverRecommendCache'](arg1);
+}
+
 export function GetLocalAudioStream(arg1) {
   return window['go']['main']['App']['GetLocalAudioStream'](arg1);
+}
+
+export function GetLocalLibrarySnapshot() {
+  return window['go']['main']['App']['GetLocalLibrarySnapshot']();
 }
 
 export function GetLocalSongCovers(arg1) {
@@ -38,12 +50,20 @@ export function GetLyric(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLyric'](arg1, arg2, arg3);
 }
 
+export function GetMetingSettings() {
+  return window['go']['main']['App']['GetMetingSettings']();
+}
+
 export function GetMusicURL(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['GetMusicURL'](arg1, arg2, arg3, arg4);
 }
 
 export function GetPic(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetPic'](arg1, arg2, arg3);
+}
+
+export function GetPlayerSettings() {
+  return window['go']['main']['App']['GetPlayerSettings']();
 }
 
 export function GetPlaylist(arg1) {
@@ -94,6 +114,10 @@ export function RemoveLocalMusicFolder(arg1) {
   return window['go']['main']['App']['RemoveLocalMusicFolder'](arg1);
 }
 
+export function RemoveMetingURL(arg1) {
+  return window['go']['main']['App']['RemoveMetingURL'](arg1);
+}
+
 export function RemovePlaylistSong(arg1, arg2) {
   return window['go']['main']['App']['RemovePlaylistSong'](arg1, arg2);
 }
@@ -108,4 +132,20 @@ export function ScanLocalLibrary() {
 
 export function Search(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['Search'](arg1, arg2, arg3, arg4);
+}
+
+export function SetActiveMetingURL(arg1) {
+  return window['go']['main']['App']['SetActiveMetingURL'](arg1);
+}
+
+export function SetDiscoverRecommendCache(arg1, arg2) {
+  return window['go']['main']['App']['SetDiscoverRecommendCache'](arg1, arg2);
+}
+
+export function SetMetingPlatform(arg1) {
+  return window['go']['main']['App']['SetMetingPlatform'](arg1);
+}
+
+export function UpdatePlayerSettings(arg1) {
+  return window['go']['main']['App']['UpdatePlayerSettings'](arg1);
 }

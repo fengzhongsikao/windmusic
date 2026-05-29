@@ -1,9 +1,8 @@
 import {
   GetLocalAudioStream,
+  GetLocalLibrarySnapshot,
   GetLocalSongCovers,
   GetLocalSongExtras,
-  ListLocalFolders,
-  ListLocalLibrary,
   PickLocalMusicFolder,
   RemoveLocalMusicFolder,
   ScanLocalLibrary,
@@ -20,8 +19,7 @@ export const LOCAL_SOURCE_ID = 'local';
 
 export {
   PickLocalMusicFolder,
-  ListLocalFolders,
-  ListLocalLibrary,
+  GetLocalLibrarySnapshot,
   RemoveLocalMusicFolder,
   ScanLocalLibrary,
   GetLocalAudioStream,

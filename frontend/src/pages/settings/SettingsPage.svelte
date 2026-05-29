@@ -2,27 +2,23 @@
   import { Plus, Settings, Trash2 } from '@lucide/svelte';
   import {
     addMetingURL,
-    getActiveMetingURL,
-    getMetingURLs,
+    metingSettings,
     removeMetingURL,
     setActiveMetingURL,
-  } from '@/lib/meting';
+  } from '@/stores/meting.svelte';
   import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
 
   let dataDir = $state('');
   let message = $state('');
   let error = $state('');
   let draftURL = $state('');
-  let sources = $state<string[]>([]);
-  let activeURL = $state('');
+  let saving = $state(false);
+
+  const sources = $derived(metingSettings.urls);
+  const activeURL = $derived(metingSettings.activeUrl);
 
   function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
-  }
-
-  function reloadSources() {
-    sources = getMetingURLs();
-    activeURL = getActiveMetingURL();
   }
 
   async function loadDataDir() {
@@ -34,12 +30,13 @@
   }
 
   $effect(() => {
-    reloadSources();
     void loadDataDir();
   });
 
-  function handleAdd() {
-    const addError = addMetingURL(draftURL);
+  async function handleAdd() {
+    saving = true;
+    const addError = await addMetingURL(draftURL);
+    saving = false;
     if (addError) {
       message = '';
       error = addError;
@@ -48,21 +45,33 @@
     draftURL = '';
     error = '';
     message = '已添加';
-    reloadSources();
   }
 
-  function handleRemove(url: string) {
-    removeMetingURL(url);
-    error = '';
-    message = '已删除';
-    reloadSources();
+  async function handleRemove(url: string) {
+    saving = true;
+    try {
+      await removeMetingURL(url);
+      error = '';
+      message = '已删除';
+    } catch (err) {
+      error = errorMessage(err);
+      message = '';
+    } finally {
+      saving = false;
+    }
   }
 
-  function handleSetActive(url: string) {
-    setActiveMetingURL(url);
-    error = '';
-    message = '';
-    reloadSources();
+  async function handleSetActive(url: string) {
+    saving = true;
+    try {
+      await setActiveMetingURL(url);
+      error = '';
+      message = '';
+    } catch (err) {
+      error = errorMessage(err);
+    } finally {
+      saving = false;
+    }
   }
 </script>
 
@@ -85,7 +94,8 @@
               type="button"
               class="source-url"
               title={url === activeURL ? '当前使用' : '设为当前'}
-              onclick={() => handleSetActive(url)}
+              disabled={saving}
+              onclick={() => void handleSetActive(url)}
             >
               {url}
             </button>
@@ -96,7 +106,8 @@
               type="button"
               class="btn icon-btn danger"
               aria-label="删除"
-              onclick={() => handleRemove(url)}
+              disabled={saving}
+              onclick={() => void handleRemove(url)}
             >
               <Trash2 size={16} />
             </button>
@@ -113,11 +124,12 @@
         type="url"
         placeholder="https://meting.mikus.ink"
         bind:value={draftURL}
+        disabled={saving}
         onkeydown={(e) => {
-          if (e.key === 'Enter') handleAdd();
+          if (e.key === 'Enter') void handleAdd();
         }}
       />
-      <button type="button" class="btn add-btn" onclick={handleAdd}>
+      <button type="button" class="btn add-btn" disabled={saving} onclick={() => void handleAdd()}>
         <Plus size={16} />
         添加
       </button>

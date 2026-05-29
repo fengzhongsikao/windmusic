@@ -41,8 +41,8 @@ type localFoldersFile struct {
 }
 
 type localScanCacheEntry struct {
-	ModTimeUnix int64             `json:"modTimeUnix"`
-	Song        models.LocalSong  `json:"song"`
+	ModTimeUnix int64            `json:"modTimeUnix"`
+	Song        models.LocalSong `json:"song"`
 }
 
 type localScanCacheFile struct {
@@ -694,18 +694,18 @@ func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSo
 	duration := formatTrackDuration(probeAudioDurationSeconds(absPath, ext))
 
 	return models.LocalSong{
-		ID:       absPath,
-		Title:    title,
-		Artist:   artist,
-		Album:    album,
-		Duration: duration,
-		FilePath: absPath,
-		Format:   strings.TrimPrefix(strings.ToUpper(ext), "."),
-		Size:     formatFileSize(info.Size()),
-	}, localSongExtras{
-		CoverData: coverData,
-		Lyric:     lyric,
-	}, nil
+			ID:       absPath,
+			Title:    title,
+			Artist:   artist,
+			Album:    album,
+			Duration: duration,
+			FilePath: absPath,
+			Format:   strings.TrimPrefix(strings.ToUpper(ext), "."),
+			Size:     formatFileSize(info.Size()),
+		}, localSongExtras{
+			CoverData: coverData,
+			Lyric:     lyric,
+		}, nil
 }
 
 func readSidecarLyric(audioPath string) string {

@@ -10,7 +10,6 @@ import {
   AddFavorite,
   RemoveFavorite,
   IsFavorite,
-  ListRecent,
   RecordRecent,
   RemoveRecent,
   ClearRecent,
@@ -19,199 +18,48 @@ import { music } from '../../wailsjs/go/models';
 import type { PlayerTrack } from '@/stores/player.svelte';
 import defaultCover from '@/assets/images/default.jpg';
 import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/localMusic';
-import { getMetingURL, metingSourceId } from '@/lib/meting';
+import { getMetingURL, metingSourceId } from '@/stores/meting.svelte';
+import {
+  favoriteSongKey,
+  normalizeFavoriteSong,
+  sameFavoriteSong,
+  type FavoriteSong,
+} from '@/lib/favoriteSong';
+import { getFavorites } from '@/stores/favorites.svelte';
+import { FAVORITES_UPDATED_EVENT } from '@/stores/favorites.svelte';
+import { RECENT_UPDATED_EVENT } from '@/stores/recent.svelte';
+import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type SongItem = music.SongItem;
 export type SearchResult = music.SearchResult;
-export type FavoriteSong = {
-  id: string;
-  title: string;
-  artist: string;
-  album?: string;
-  duration?: string;
-  coverUrl?: string;
-  sourceId?: string;
-  platform?: string;
-  metaJson?: string;
-};
-
-export type RecentSong = FavoriteSong & {
-  playedAt: string;
-};
+export type { FavoriteSong } from '@/lib/favoriteSong';
+export type { RecentSong } from '@/lib/recentSong';
+export { favoriteSongKey, normalizeFavoriteSong } from '@/lib/favoriteSong';
+export { normalizeRecentSong } from '@/lib/recentSong';
 
 export { Search, GetMusicURL, GetLyric, GetPic };
-export { ListFavorites, ListRecent };
 
-const FAVORITES_CHANGED_EVENT = 'favorites:changed';
-const RECENT_CHANGED_EVENT = 'recent:changed';
-
-let favoritesListCache: FavoriteSong[] | null = null;
-
-const EMPTY_FIELD_MARKERS = new Set(['—', '-', '未知专辑', 'unknown']);
-
-function emptyIfUnknown(value: string | undefined): string {
-  const trimmed = value?.trim() ?? '';
-  if (!trimmed || EMPTY_FIELD_MARKERS.has(trimmed)) {
-    return '';
-  }
-  return trimmed;
-}
-
-function normalizeFavoriteSong(raw: {
-  id?: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  duration?: string;
-  coverUrl?: string;
-  sourceId?: string;
-  platform?: string;
-  metaJson?: string;
-}): FavoriteSong {
-  let album = emptyIfUnknown(raw.album);
-  let duration = emptyIfUnknown(raw.duration);
-  const metaJson = raw.metaJson ?? '';
-
-  if ((!album || !duration) && metaJson) {
-    try {
-      const meta = JSON.parse(metaJson) as {
-        album?: string;
-        duration?: string;
-        interval?: string;
-      };
-      if (!album) {
-        album = emptyIfUnknown(meta.album);
-      }
-      if (!duration) {
-        duration = emptyIfUnknown(meta.duration ?? meta.interval);
-      }
-    } catch {
-      // ignore malformed metaJson
-    }
-  }
-
-  return {
-    id: String(raw.id ?? ''),
-    title: raw.title ?? '',
-    artist: raw.artist ?? '',
-    album,
-    duration,
-    coverUrl: raw.coverUrl ?? '',
-    sourceId: raw.sourceId ?? '',
-    platform: raw.platform ?? '',
-    metaJson,
-  };
-}
-
-export function favoriteSongKey(song: FavoriteSong): string {
-  const entry = normalizeFavoriteSong(song);
-  return [entry.id, entry.sourceId, entry.platform, entry.metaJson].join('|');
-}
-
-function sameFavoriteSong(a: FavoriteSong, b: FavoriteSong): boolean {
-  if (a.metaJson && b.metaJson) {
-    if (a.metaJson !== b.metaJson) return false;
-    if (a.platform && b.platform && a.platform !== b.platform) return false;
-    if (a.sourceId && b.sourceId && a.sourceId !== b.sourceId) return false;
-    return true;
-  }
-  if (a.id && b.id) {
-    if (String(a.id) !== String(b.id)) return false;
-    if (a.platform && b.platform && a.platform !== b.platform) return false;
-    if (a.sourceId && b.sourceId && a.sourceId !== b.sourceId) return false;
-    return true;
-  }
-  return Boolean(a.title && b.title && a.artist && b.artist && a.title === b.title && a.artist === b.artist);
-}
-
-function notifyFavoritesChanged() {
-  favoritesListCache = null;
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(FAVORITES_CHANGED_EVENT));
-  }
-}
-
-/** 读取收藏列表（带内存缓存，避免同页重复走 Wails 读盘） */
+/** 读取收藏；默认用内存状态，force 时从 Go 重新拉取 */
 export async function fetchFavorites(options?: { force?: boolean }): Promise<FavoriteSong[]> {
-  if (!options?.force && favoritesListCache) {
-    return favoritesListCache;
+  if (!options?.force && getFavorites().length > 0) {
+    return [...getFavorites()];
   }
   const items = await ListFavorites();
-  const seen = new Set<string>();
-  favoritesListCache = items
-    .map((item) => normalizeFavoriteSong(item))
-    .filter((item) => {
-      const key = favoriteSongKey(item);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  return favoritesListCache;
+  return items.map((item) => normalizeFavoriteSong(item));
 }
 
 export function onFavoritesChanged(listener: () => void): () => void {
-  if (typeof window === 'undefined') {
-    return () => {};
-  }
-  const handler = () => listener();
-  window.addEventListener(FAVORITES_CHANGED_EVENT, handler);
-  return () => window.removeEventListener(FAVORITES_CHANGED_EVENT, handler);
-}
-
-function notifyRecentChanged() {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(RECENT_CHANGED_EVENT));
-  }
+  return EventsOn(FAVORITES_UPDATED_EVENT, () => listener());
 }
 
 export function onRecentChanged(listener: () => void): () => void {
-  if (typeof window === 'undefined') {
-    return () => {};
-  }
-  const handler = () => listener();
-  window.addEventListener(RECENT_CHANGED_EVENT, handler);
-  return () => window.removeEventListener(RECENT_CHANGED_EVENT, handler);
+  return EventsOn(RECENT_UPDATED_EVENT, () => listener());
 }
 
-function playedAtToIso(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  return '';
-}
+import { getRecentSongs } from '@/stores/recent.svelte';
 
-export function normalizeRecentSong(raw: {
-  id?: string;
-  title?: string;
-  artist?: string;
-  album?: string;
-  duration?: string;
-  coverUrl?: string;
-  sourceId?: string;
-  platform?: string;
-  metaJson?: string;
-  playedAt?: unknown;
-}): RecentSong {
-  return {
-    id: String(raw.id ?? ''),
-    title: raw.title ?? '',
-    artist: raw.artist ?? '',
-    album: raw.album ?? '',
-    duration: raw.duration ?? '',
-    coverUrl: raw.coverUrl ?? '',
-    sourceId: raw.sourceId ?? '',
-    platform: raw.platform ?? '',
-    metaJson: raw.metaJson ?? '',
-    playedAt: playedAtToIso(raw.playedAt),
-  };
-}
-
-export async function fetchRecentSongs(): Promise<RecentSong[]> {
-  const items = await ListRecent();
-  return items.map((item) => normalizeRecentSong(item));
+export async function fetchRecentSongs(): Promise<import('@/lib/recentSong').RecentSong[]> {
+  return [...getRecentSongs()];
 }
 
 export async function resolveReadySourceId(): Promise<string> {
@@ -253,6 +101,16 @@ export async function fetchCoverUrl(track: PlayerTrack): Promise<string> {
   } catch {
     return defaultCover;
   }
+}
+
+const EMPTY_FIELD_MARKERS = new Set(['—', '-', '未知专辑', 'unknown']);
+
+function emptyIfUnknown(value: string | undefined): string {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed || EMPTY_FIELD_MARKERS.has(trimmed)) {
+    return '';
+  }
+  return trimmed;
 }
 
 function albumAndDurationFromTrack(track: PlayerTrack): { album: string; duration: string } {
@@ -325,23 +183,22 @@ function toWailsRecentSong(song: FavoriteSong): music.RecentSong {
 
 export async function checkTrackFavorite(track: PlayerTrack): Promise<boolean> {
   const song = toFavoriteSong(track);
-  if (favoritesListCache) {
-    return favoritesListCache.some((item) => sameFavoriteSong(item, song));
+  const cached = getFavorites();
+  if (cached.length > 0) {
+    return cached.some((item) => sameFavoriteSong(item, song));
   }
   return IsFavorite(toWailsFavoriteSong(song));
 }
 
 export async function addTrackFavorite(track: PlayerTrack): Promise<void> {
   await AddFavorite(toWailsFavoriteSong(toFavoriteSong(track)));
-  notifyFavoritesChanged();
 }
 
 export async function removeTrackFavorite(track: PlayerTrack): Promise<void> {
   await RemoveFavorite(toWailsFavoriteSong(toFavoriteSong(track)));
-  notifyFavoritesChanged();
 }
 
-export function toRecentSong(track: PlayerTrack): RecentSong {
+export function toRecentSong(track: PlayerTrack): import('@/lib/recentSong').RecentSong {
   return {
     ...toFavoriteSong(track),
     playedAt: '',
@@ -362,18 +219,15 @@ export async function recordRecentPlay(track: PlayerTrack): Promise<void> {
   }
   try {
     await RecordRecent(toWailsRecentSong(toFavoriteSong(track)));
-    notifyRecentChanged();
   } catch (err) {
     console.warn('[最近播放] 记录失败', err);
   }
 }
 
-export async function removeRecentSong(song: RecentSong): Promise<void> {
+export async function removeRecentSong(song: import('@/lib/recentSong').RecentSong): Promise<void> {
   await RemoveRecent(toWailsRecentSong({ ...song }));
-  notifyRecentChanged();
 }
 
 export async function clearRecentHistory(): Promise<void> {
   await ClearRecent();
-  notifyRecentChanged();
 }

@@ -7,6 +7,8 @@ import (
 	appmusic "windmusic/music"
 	localmusic "windmusic/music/local"
 	metingmusic "windmusic/music/meting"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 type App struct {
@@ -15,14 +17,88 @@ type App struct {
 	recent    appmusic.RecentStore
 	playlists appmusic.PlaylistsStore
 	local     localmusic.LocalLibraryStore
+	player    appmusic.PlayerSettingsStore
+	meting    appmusic.MetingSettingsStore
+	discover  *appmusic.DiscoverCache
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{
+		discover: appmusic.NewDiscoverCache(),
+	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	a.bootstrapAppData()
+	go a.bootstrapLocalLibrary()
+}
+
+func (a *App) localLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
+	folders, err := a.local.ListFolders()
+	if err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+	songs, err := a.local.ListCached()
+	if err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+	if songs == nil {
+		songs = []models.LocalSong{}
+	}
+	if folders == nil {
+		folders = []string{}
+	}
+	return models.LocalLibrarySnapshot{Folders: folders, Songs: songs}, nil
+}
+
+func (a *App) emitLocalLibrarySnapshot() {
+	if a.ctx == nil {
+		return
+	}
+	snapshot, err := a.localLibrarySnapshot()
+	if err != nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, localmusic.EventLibraryUpdated, snapshot)
+}
+
+func (a *App) emitLocalLibraryScanning(scanning bool) {
+	if a.ctx == nil {
+		return
+	}
+	runtime.EventsEmit(a.ctx, localmusic.EventLibraryScanning, scanning)
+}
+
+func (a *App) bootstrapLocalLibrary() {
+	a.emitLocalLibrarySnapshot()
+
+	snapshot, err := a.localLibrarySnapshot()
+	if err != nil {
+		return
+	}
+	if len(snapshot.Folders) == 0 || len(snapshot.Songs) > 0 {
+		return
+	}
+
+	a.emitLocalLibraryScanning(true)
+	defer a.emitLocalLibraryScanning(false)
+
+	if _, err := a.local.Scan(); err != nil {
+		return
+	}
+	a.emitLocalLibrarySnapshot()
+}
+
+func (a *App) scanAndEmitLocalLibrary() error {
+	a.emitLocalLibraryScanning(true)
+	defer a.emitLocalLibraryScanning(false)
+
+	if _, err := a.local.Scan(); err != nil {
+		return err
+	}
+	a.emitLocalLibrarySnapshot()
+	return nil
 }
 
 func (a *App) Search(sourceID, platform, keyword string, page int) (*models.SearchResult, error) {
@@ -54,11 +130,19 @@ func (a *App) IsFavorite(song models.FavoriteSong) (bool, error) {
 }
 
 func (a *App) AddFavorite(song models.FavoriteSong) error {
-	return a.favorites.Add(song)
+	if err := a.favorites.Add(song); err != nil {
+		return err
+	}
+	a.emitFavorites()
+	return nil
 }
 
 func (a *App) RemoveFavorite(song models.FavoriteSong) error {
-	return a.favorites.Remove(song)
+	if err := a.favorites.Remove(song); err != nil {
+		return err
+	}
+	a.emitFavorites()
+	return nil
 }
 
 func (a *App) ListRecent() ([]models.RecentSong, error) {
@@ -66,15 +150,27 @@ func (a *App) ListRecent() ([]models.RecentSong, error) {
 }
 
 func (a *App) RecordRecent(song models.RecentSong) error {
-	return a.recent.Record(song)
+	if err := a.recent.Record(song); err != nil {
+		return err
+	}
+	a.emitRecent()
+	return nil
 }
 
 func (a *App) RemoveRecent(song models.RecentSong) error {
-	return a.recent.Remove(song)
+	if err := a.recent.Remove(song); err != nil {
+		return err
+	}
+	a.emitRecent()
+	return nil
 }
 
 func (a *App) ClearRecent() error {
-	return a.recent.Clear()
+	if err := a.recent.Clear(); err != nil {
+		return err
+	}
+	a.emitRecent()
+	return nil
 }
 
 func (a *App) ListPlaylists() ([]models.UserPlaylist, error) {
@@ -82,7 +178,12 @@ func (a *App) ListPlaylists() ([]models.UserPlaylist, error) {
 }
 
 func (a *App) CreatePlaylist(name string) (models.UserPlaylist, error) {
-	return a.playlists.Create(name)
+	playlist, err := a.playlists.Create(name)
+	if err != nil {
+		return models.UserPlaylist{}, err
+	}
+	a.emitPlaylists()
+	return playlist, nil
 }
 
 func (a *App) GetPlaylist(id string) (models.UserPlaylist, error) {
@@ -90,15 +191,27 @@ func (a *App) GetPlaylist(id string) (models.UserPlaylist, error) {
 }
 
 func (a *App) AddPlaylistSong(playlistID string, song models.FavoriteSong) error {
-	return a.playlists.AddSong(playlistID, song)
+	if err := a.playlists.AddSong(playlistID, song); err != nil {
+		return err
+	}
+	a.emitPlaylists()
+	return nil
 }
 
 func (a *App) RemovePlaylistSong(playlistID string, song models.FavoriteSong) error {
-	return a.playlists.RemoveSong(playlistID, song)
+	if err := a.playlists.RemoveSong(playlistID, song); err != nil {
+		return err
+	}
+	a.emitPlaylists()
+	return nil
 }
 
 func (a *App) DeletePlaylist(id string) error {
-	return a.playlists.Delete(id)
+	if err := a.playlists.Delete(id); err != nil {
+		return err
+	}
+	a.emitPlaylists()
+	return nil
 }
 
 func (a *App) PickLocalMusicFolder() (string, error) {
@@ -109,7 +222,14 @@ func (a *App) PickLocalMusicFolder() (string, error) {
 	if err := a.local.AddFolder(dir); err != nil {
 		return "", err
 	}
+	if err := a.scanAndEmitLocalLibrary(); err != nil {
+		return dir, err
+	}
 	return dir, nil
+}
+
+func (a *App) GetLocalLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
+	return a.localLibrarySnapshot()
 }
 
 func (a *App) ListLocalFolders() ([]string, error) {
@@ -117,7 +237,10 @@ func (a *App) ListLocalFolders() ([]string, error) {
 }
 
 func (a *App) RemoveLocalMusicFolder(folderPath string) error {
-	return a.local.RemoveFolder(folderPath)
+	if err := a.local.RemoveFolder(folderPath); err != nil {
+		return err
+	}
+	return a.scanAndEmitLocalLibrary()
 }
 
 func (a *App) ListLocalLibrary() ([]models.LocalSong, error) {
@@ -125,7 +248,15 @@ func (a *App) ListLocalLibrary() ([]models.LocalSong, error) {
 }
 
 func (a *App) ScanLocalLibrary() ([]models.LocalSong, error) {
-	return a.local.Scan()
+	a.emitLocalLibraryScanning(true)
+	defer a.emitLocalLibraryScanning(false)
+
+	songs, err := a.local.Scan()
+	if err != nil {
+		return nil, err
+	}
+	a.emitLocalLibrarySnapshot()
+	return songs, nil
 }
 
 func (a *App) GetLocalAudioStream(filePath string) (string, error) {

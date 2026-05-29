@@ -2,7 +2,6 @@
   本地音乐：文件夹管理、扫描曲目、按文件夹 Tab 筛选、点击播放。
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { Folder, FolderOpen, LoaderCircle, RefreshCw, Trash2 } from '@lucide/svelte';
   import TrackList from '@/components/TrackList.svelte';
   import PlayAllButton from '@/components/PlayAllButton.svelte';
@@ -15,14 +14,7 @@
     RemoveLocalMusicFolder,
     type LocalSong,
   } from '@/lib/localMusic';
-  import {
-    ensureLocalLibrary,
-    invalidateLocalLibrarySession,
-    LOCAL_ALL_TAB_ID,
-    localLibrary,
-    preloadLocalLibrary,
-    scanLocalLibrary,
-  } from '@/stores/localLibrary.svelte';
+  import { LOCAL_ALL_TAB_ID, localLibrary, scanLocalLibrary } from '@/stores/localLibrary.svelte';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
   import { audioLoading } from '@/stores/audioEngine';
   import { error as toastError } from '@/stores/toast';
@@ -61,7 +53,6 @@
 
   async function handleRescan() {
     pageError = '';
-    invalidateLocalLibrarySession();
     try {
       await scanLocalLibrary();
       if (activeFolderTab !== LOCAL_ALL_TAB_ID && !folders.includes(activeFolderTab)) {
@@ -80,8 +71,6 @@
       if (!picked?.trim()) {
         return;
       }
-      invalidateLocalLibrarySession();
-      await scanLocalLibrary();
     } catch (err) {
       pageError = err instanceof Error ? err.message : String(err);
       toastError('添加音乐文件夹失败');
@@ -99,8 +88,6 @@
       if (activeFolderTab === folderPath) {
         activeFolderTab = LOCAL_ALL_TAB_ID;
       }
-      invalidateLocalLibrarySession();
-      await scanLocalLibrary();
     } catch (err) {
       pageError = err instanceof Error ? err.message : String(err);
       toastError('移除文件夹失败');
@@ -133,16 +120,6 @@
     playAllTracks(queue);
   }
 
-  onMount(() => {
-    if (localLibrary.loaded) {
-      return;
-    }
-    preloadLocalLibrary();
-    void ensureLocalLibrary().catch((err) => {
-      pageError = err instanceof Error ? err.message : String(err);
-      toastError('加载本地音乐失败');
-    });
-  });
 </script>
 
 <div class="local-page">
