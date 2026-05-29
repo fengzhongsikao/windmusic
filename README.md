@@ -125,18 +125,54 @@ windmusic/
 
 ### 应用数据目录（Go 读写）
 
-根目录：`os.UserConfigDir()/windmusic`
+根目录：`os.UserConfigDir()/windmusic`（应用内 **设置** 页也会显示 `GetSourceDataDir()` 返回的完整路径）
 
 | 文件 | 内容 |
 |------|------|
 | `favorites.json` | 收藏列表 |
-| `recent.json` | 最近播放（最多 200 条） |
+| `recent.json` | 最近播放 |
+| `playlists.json` | 自建歌单 |
+| `local-folders.json` | 本地音乐扫描的文件夹列表 |
+| `local-scan-cache.json` | 本地扫描结果缓存 |
+| `local-scan-extras.json` | 本地封面、歌词等扩展数据 |
 
 各平台常见路径：
 
 - **macOS**：`~/Library/Application Support/windmusic/`
 - **Windows**：`%AppData%\windmusic\`
 - **Linux**：`~/.config/windmusic/`（或 `$XDG_CONFIG_HOME/windmusic/`）
+
+查看该目录下的 JSON 文件：
+
+**macOS**
+
+```bash
+ls -la ~/Library/Application\ Support/windmusic/
+```
+
+**Linux**
+
+```bash
+ls -la ~/.config/windmusic/
+```
+
+若设置了 `XDG_CONFIG_HOME`：
+
+```bash
+ls -la "${XDG_CONFIG_HOME}/windmusic/"
+```
+
+**Windows（PowerShell）**
+
+```powershell
+Get-ChildItem "$env:APPDATA\windmusic"
+```
+
+**Windows（命令提示符 cmd）**
+
+```cmd
+dir "%APPDATA%\windmusic"
+```
 
 ### 浏览器 localStorage（仅前端）
 
