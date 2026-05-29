@@ -6,9 +6,16 @@
   import { Heart } from '@lucide/svelte';
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { ListFavorites, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
+  import {
+    favoriteSongKey,
+    fetchFavorites,
+    onFavoritesChanged,
+    removeTrackFavorite,
+  } from '@/lib/wailsPlayer';
   import type { FavoriteSong } from '@/lib/wailsPlayer';
-  import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
+  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
+  import type { PlayerTrack } from '@/stores/player.svelte';
 
   let loading = $state(false);
   let error = $state('');
@@ -22,6 +29,7 @@
   const tracks = $derived<TrackItem[]>(
     favorites.map((song) => ({
       id: song.id,
+      listKey: favoriteSongKey(song),
       title: song.title,
       artist: song.artist,
       album: song.album ?? '',
@@ -32,9 +40,33 @@
 
   let currentSongId = $derived(player.currentSong.id);
 
+  function favoriteToPlayerTrack(song: FavoriteSong): PlayerTrack {
+    return {
+      id: song.id,
+      title: song.title,
+      artist: song.artist,
+      album: song.album ?? '',
+      duration: song.duration?.trim() || '—',
+      coverUrl: song.coverUrl?.trim() || undefined,
+      playback:
+        song.sourceId || song.platform || song.metaJson
+          ? {
+              sourceId: song.sourceId ?? '',
+              platform: song.platform ?? '',
+              metaJson: song.metaJson ?? '',
+            }
+          : undefined,
+    };
+  }
+
+  function playAll() {
+    if (editMode) return;
+    playAllTracks(favorites.map(favoriteToPlayerTrack));
+  }
+
   function playTrack(track: TrackItem) {
     if (editMode) return;
-    const song = favorites.find((item) => String(item.id) === String(track.id));
+    const song = favorites.find((item) => favoriteSongKey(item) === track.listKey);
     togglePlayByTrack({
       id: track.id,
       title: track.title,
@@ -58,13 +90,13 @@
   }
 
   function toggleSelect(track: TrackItem, selected: boolean) {
-    const id = String(track.id);
+    const key = track.listKey ?? String(track.id);
     if (selected) {
-      selectedIds = { ...selectedIds, [id]: true };
+      selectedIds = { ...selectedIds, [key]: true };
       return;
     }
     const next = { ...selectedIds };
-    delete next[id];
+    delete next[key];
     selectedIds = next;
   }
 
@@ -80,12 +112,26 @@
   }
 
   const selectedCount = $derived(Object.keys(selectedIds).length);
+  const allSelected = $derived(tracks.length > 0 && selectedCount === tracks.length);
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      selectedIds = {};
+      return;
+    }
+    const next: Record<string, true> = {};
+    for (const track of tracks) {
+      const key = track.listKey ?? String(track.id);
+      next[key] = true;
+    }
+    selectedIds = next;
+  }
 
   async function confirmDeleteSelected() {
     if (selectedCount === 0 || deleting) return;
     deleting = true;
     try {
-      const targets = favorites.filter((song) => selectedIds[String(song.id)]);
+      const targets = favorites.filter((song) => selectedIds[favoriteSongKey(song)]);
       for (const song of targets) {
         await removeTrackFavorite({
           id: song.id,
@@ -114,14 +160,19 @@
     }
   }
 
-  async function loadFavorites() {
-    loading = true;
+  async function loadFavorites(force = false) {
+    const showLoading = favorites.length === 0;
+    if (showLoading) {
+      loading = true;
+    }
     error = '';
     try {
-      favorites = await ListFavorites();
+      favorites = await fetchFavorites({ force });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
-      favorites = [];
+      if (favorites.length === 0) {
+        favorites = [];
+      }
     } finally {
       loading = false;
     }
@@ -130,30 +181,10 @@
   onMount(() => {
     void loadFavorites();
     return onFavoritesChanged(() => {
-      void loadFavorites();
+      void loadFavorites(true);
     });
   });
 
-  $effect(() => {
-    setQueue(
-      favorites.map((song) => ({
-        id: song.id,
-        title: song.title,
-        artist: song.artist,
-        album: song.album ?? '',
-        duration: song.duration?.trim() || '—',
-        coverUrl: song.coverUrl?.trim() || undefined,
-        playback:
-          song.sourceId || song.platform || song.metaJson
-            ? {
-                sourceId: song.sourceId ?? '',
-                platform: song.platform ?? '',
-                metaJson: song.metaJson ?? '',
-              }
-            : undefined,
-      })),
-    );
-  });
 </script>
 
 <div class="favorites-page">
@@ -170,6 +201,14 @@
         <button type="button" class="btn action-btn" onclick={cancelEdit}>取消</button>
         <button
           type="button"
+          class="btn action-btn"
+          disabled={tracks.length === 0}
+          onclick={toggleSelectAll}
+        >
+          {allSelected ? '取消全选' : '全选'}
+        </button>
+        <button
+          type="button"
           class="btn action-btn danger"
           disabled={selectedCount === 0}
           onclick={() => (showDeleteDialog = true)}
@@ -177,6 +216,7 @@
           删除（{selectedCount}）
         </button>
       {:else}
+        <PlayAllButton disabled={tracks.length === 0} onclick={playAll} />
         <button type="button" class="btn action-btn" onclick={startEdit}>编辑</button>
       {/if}
     </div>

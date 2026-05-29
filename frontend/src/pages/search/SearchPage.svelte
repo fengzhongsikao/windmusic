@@ -7,13 +7,17 @@
   import TrackList from '@/components/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingPlatform, getMetingURL, metingSourceId, setMetingPlatform } from '@/lib/meting';
+  import {
+    getMetingPlatform,
+    getMetingURL,
+    metingSourceId,
+    type MetingPlatform,
+  } from '@/lib/meting';
+  import PlayAllButton from '@/components/PlayAllButton.svelte';
   import {
     player,
-    setCurrentTrack,
-    setQueue,
+    playAllTracks,
     togglePlayByTrack,
-    openImmersiveView,
   } from '@/stores/player.svelte';
   import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
@@ -22,10 +26,7 @@
   type SongItem = music.SongItem;
   type SearchResult = music.SearchResult;
 
-  const PLATFORM_LABELS: Record<string, string> = {
-    tx: 'QQ音乐',
-    tencent: 'QQ音乐',
-    wy: '网易云',
+  const PLATFORM_LABELS: Record<MetingPlatform, string> = {
     netease: '网易云',
   };
 
@@ -38,7 +39,7 @@
   let pageLoading = $state(false);
   let error = $state('');
   let keyword = $state('');
-  let selectedPlatform = $state<'tx' | 'wy'>('tx');
+  let selectedPlatform = $state<MetingPlatform>('netease');
   let currentSongId = $derived(player.currentSong.id);
   let brokenCovers = $state<Record<string, true>>({});
 
@@ -60,7 +61,11 @@
   const totalPages = $derived(Math.max(1, Math.ceil(total / limit)));
   const canPrev = $derived(page > 1);
   const canNext = $derived(page < totalPages);
-  const platformLabel = $derived(PLATFORM_LABELS[sourcePlatform] ?? sourcePlatform);
+  const platformLabel = $derived(
+    sourcePlatform in PLATFORM_LABELS
+      ? PLATFORM_LABELS[sourcePlatform as MetingPlatform]
+      : sourcePlatform,
+  );
   const indexOffset = $derived((page - 1) * limit);
 
   const tracks = $derived<TrackItem[]>(
@@ -127,16 +132,6 @@
 
   function resolvePlatform(): string {
     return selectedPlatform;
-  }
-
-  async function handlePlatformChange(next: string) {
-    const normalized = next === 'wy' ? 'wy' : 'tx';
-    selectedPlatform = normalized;
-    setMetingPlatform(normalized);
-    clearPageCache();
-    if (keyword) {
-      await runSearch(keyword, 1);
-    }
   }
 
   async function runSearch(q: string, pageNum: number) {
@@ -244,22 +239,30 @@
     );
   }
 
-  function playTrack(track: TrackItem) {
-    const playerTrack = resolvePlayerTrack(track);
-    console.info('[搜索页] 点击歌曲，切换播放状态', {
-      id: playerTrack.id,
-      title: playerTrack.title,
-      artist: playerTrack.artist,
-      album: playerTrack.album,
-      coverUrl: playerTrack.coverUrl,
-      playback: playerTrack.playback,
-    });
-    togglePlayByTrack(playerTrack);
+  function allPlayerTracks(): ReturnType<typeof trackItemToPlayerTrack>[] {
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
+    return songs.map((song) =>
+      trackItemToPlayerTrack(
+        {
+          id: song.id,
+          title: song.name,
+          artist: song.singer,
+          album: song.album,
+          duration: song.interval ?? '—',
+          coverUrl: song.img?.trim() || undefined,
+        },
+        buildPlaybackContext(song, sourceId, sourcePlatform),
+      ),
+    );
   }
 
-  function openSongDetail(track: TrackItem) {
-    setCurrentTrack(resolvePlayerTrack(track));
-    openImmersiveView();
+  function playTrack(track: TrackItem) {
+    togglePlayByTrack(resolvePlayerTrack(track));
+  }
+
+  function playAll() {
+    playAllTracks(allPlayerTracks());
   }
 
   function goToPage(nextPage: number) {
@@ -273,53 +276,29 @@
     if (router.location !== '/search') {
       return;
     }
-    selectedPlatform = getMetingPlatform() === 'wy' ? 'wy' : 'tx';
+    selectedPlatform = getMetingPlatform();
     const { q, page: pageNum } = parseSearchParams(router.querystring);
     void runSearch(q, pageNum);
   });
 
-  $effect(() => {
-    const metingURL = getMetingURL();
-    const sourceId = metingURL ? metingSourceId(metingURL) : '';
-    setQueue(
-      songs.map((song) =>
-        trackItemToPlayerTrack(
-          {
-            id: song.id,
-            title: song.name,
-            artist: song.singer,
-            album: song.album,
-            duration: song.interval ?? '—',
-            coverUrl: song.img?.trim() || undefined,
-          },
-          buildPlaybackContext(song, sourceId, sourcePlatform),
-        ),
-      ),
-    );
-  });
 </script>
 
 <div class="search-page">
   <div class="section-header">
     <div class="platform-picker">
-      <label for="search-platform" class="platform-label">平台</label>
-      <select
-        id="search-platform"
-        class="platform-select"
-        bind:value={selectedPlatform}
-        onchange={(event) => handlePlatformChange((event.currentTarget as HTMLSelectElement).value)}
-      >
-        <option value="tx">QQ（tencent）</option>
-        <option value="wy">网易云（netease）</option>
-      </select>
+      <span class="platform-label">平台</span>
+      <span class="platform-tag">{PLATFORM_LABELS.netease}</span>
     </div>
-    {#if hasKeyword && !loading && !error}
-      <p class="result-meta">
-        {#if platformLabel}
-          <span class="platform-tag">{platformLabel}</span>
-        {/if}
-        共 {total} 条结果
-      </p>
+    {#if hasKeyword && !loading && !error && songs.length > 0}
+      <div class="header-actions">
+        <p class="result-meta">
+          {#if platformLabel}
+            <span class="platform-tag">{platformLabel}</span>
+          {/if}
+          共 {total} 条结果
+        </p>
+        <PlayAllButton onclick={playAll} />
+      </div>
     {/if}
   </div>
 
@@ -357,7 +336,6 @@
         {indexOffset}
         {brokenCovers}
         onSelect={playTrack}
-        onOpenDetail={openSongDetail}
         onCoverError={markCoverBroken}
         ariaLabel="搜索结果"
       />
@@ -418,15 +396,6 @@
     color: #666;
   }
 
-  .platform-select {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 13px;
-    background: #fff;
-    color: #333;
-  }
-
   .title-row {
     display: inline-flex;
     align-items: center;
@@ -439,6 +408,13 @@
     line-height: 2rem;
     font-weight: 700;
     color: #1f2937;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
   }
 
   .result-meta {

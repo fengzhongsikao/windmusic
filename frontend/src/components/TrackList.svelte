@@ -62,7 +62,7 @@
     <span class="col-duration" role="columnheader">时长</span>
   </div>
 
-  {#each tracks as track, index (track.id)}
+  {#each tracks as track, index (track.listKey ?? track.id)}
     <div
       class="track-row"
       class:active={isActive(track)}
@@ -86,7 +86,7 @@
         <span class="col-select" role="cell">
           <input
             type="checkbox"
-            checked={Boolean(selectedIds[String(track.id)])}
+            checked={Boolean(selectedIds[track.listKey ?? String(track.id)])}
             aria-label={`选择 ${track.title}`}
             onclick={(e) => e.stopPropagation()}
             oninput={(e) => onToggleSelect?.(track, (e.currentTarget as HTMLInputElement).checked)}

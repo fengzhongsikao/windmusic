@@ -7,8 +7,8 @@
 
   const menuItems = [
     { id: 'home', label: '首页', icon: House, path: '/' },
-    { id: 'recommend', label: '推荐歌单', icon: ListMusic, path: '/recommend' },
-    { id: 'ranking', label: '排行榜', icon: Trophy, path: '/ranking' },
+    // { id: 'recommend', label: '推荐歌单', icon: ListMusic, path: '/recommend' },
+    // { id: 'ranking', label: '排行榜', icon: Trophy, path: '/ranking' },
   ];
 
   const libraryItems = [

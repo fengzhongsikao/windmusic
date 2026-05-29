@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import Router from 'svelte-spa-router';
   import Sidebar from '@/pages/layout/Sidebar.svelte';
   import PlayerBar from '@/pages/layout/PlayerBar.svelte';
@@ -8,6 +9,7 @@
   import ToastViewport from '@/components/ToastViewport.svelte';
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/audioEngine';
+  import { fetchFavorites } from '@/lib/wailsPlayer';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
@@ -16,6 +18,10 @@
     if (audioEl && audioRoot) {
       initAudioEngine(audioEl, audioRoot);
     }
+  });
+
+  onMount(() => {
+    void fetchFavorites().catch(() => {});
   });
 </script>
 

@@ -1,20 +1,31 @@
-<!-- 设置页：仅保留 Meting 网络源配置 -->
 <script lang="ts">
-  import { FolderOpen, Settings } from '@lucide/svelte';
-  import { getMetingURL, setMetingURL } from '@/lib/meting';
+  import { Plus, Settings, Trash2 } from '@lucide/svelte';
+  import {
+    addMetingURL,
+    getActiveMetingURL,
+    getMetingURLs,
+    removeMetingURL,
+    setActiveMetingURL,
+  } from '@/lib/meting';
   import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
 
   let dataDir = $state('');
   let message = $state('');
   let error = $state('');
-  let metingURL = $state('');
+  let draftURL = $state('');
+  let sources = $state<string[]>([]);
+  let activeURL = $state('');
 
   function errorMessage(err: unknown): string {
     return err instanceof Error ? err.message : String(err);
   }
 
+  function reloadSources() {
+    sources = getMetingURLs();
+    activeURL = getActiveMetingURL();
+  }
+
   async function loadDataDir() {
-    error = '';
     try {
       dataDir = await GetSourceDataDir();
     } catch (err) {
@@ -23,15 +34,35 @@
   }
 
   $effect(() => {
-    metingURL = getMetingURL();
+    reloadSources();
     void loadDataDir();
   });
 
-  function saveMetingSettings() {
-    setMetingURL(metingURL);
-    metingURL = getMetingURL();
-    message = metingURL ? '已启用 Meting 源' : '已关闭 Meting 源';
+  function handleAdd() {
+    const addError = addMetingURL(draftURL);
+    if (addError) {
+      message = '';
+      error = addError;
+      return;
+    }
+    draftURL = '';
     error = '';
+    message = '已添加';
+    reloadSources();
+  }
+
+  function handleRemove(url: string) {
+    removeMetingURL(url);
+    error = '';
+    message = '已删除';
+    reloadSources();
+  }
+
+  function handleSetActive(url: string) {
+    setActiveMetingURL(url);
+    error = '';
+    message = '';
+    reloadSources();
   }
 </script>
 
@@ -44,21 +75,52 @@
   </div>
 
   <section class="panel">
-    <div class="panel-title">
-      <FolderOpen size={18} />
-      Meting 源
-    </div>
-    <p class="panel-desc">
-      填写 Meting 服务地址后，将只使用 Meting（网络源）进行搜索/播放/歌词。
-    </p>
-    <div class="meting-row">
+    <h3 class="panel-title">Meting 源</h3>
+
+    {#if sources.length > 0}
+      <ul class="source-list">
+        {#each sources as url (url)}
+          <li class="source-item" class:active={url === activeURL}>
+            <button
+              type="button"
+              class="source-url"
+              title={url === activeURL ? '当前使用' : '设为当前'}
+              onclick={() => handleSetActive(url)}
+            >
+              {url}
+            </button>
+            {#if url === activeURL}
+              <span class="source-badge">当前</span>
+            {/if}
+            <button
+              type="button"
+              class="btn icon-btn danger"
+              aria-label="删除"
+              onclick={() => handleRemove(url)}
+            >
+              <Trash2 size={16} />
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <p class="hint">暂无 Meting 源</p>
+    {/if}
+
+    <div class="add-row">
       <input
         class="meting-input"
-        type="text"
-        placeholder="例如：https://meting.mikus.ink"
-        bind:value={metingURL}
+        type="url"
+        placeholder="https://meting.mikus.ink"
+        bind:value={draftURL}
+        onkeydown={(e) => {
+          if (e.key === 'Enter') handleAdd();
+        }}
       />
-      <button type="button" class="btn save-btn" onclick={saveMetingSettings}>保存</button>
+      <button type="button" class="btn add-btn" onclick={handleAdd}>
+        <Plus size={16} />
+        添加
+      </button>
     </div>
 
     {#if dataDir}
@@ -70,7 +132,6 @@
     {#if error}
       <p class="feedback error">{error}</p>
     {/if}
-    <p class="empty-state">已移除 JS 音源管理，仅保留 Meting 网络源。</p>
   </section>
 </div>
 
@@ -80,10 +141,6 @@
   }
 
   .page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
     margin-bottom: 24px;
   }
 
@@ -97,11 +154,6 @@
     color: #333;
   }
 
-  .save-btn {
-    display: inline-flex;
-    align-items: center;
-  }
-
   .panel {
     border: 1px solid #eee;
     border-radius: 12px;
@@ -109,11 +161,74 @@
     background: #fafafa;
   }
 
-  .meting-row {
+  .panel-title {
+    margin: 0 0 16px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #333;
+  }
+
+  .hint {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: #999;
+  }
+
+  .source-list {
+    list-style: none;
+    margin: 0 0 16px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .source-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  .source-item.active {
+    border-color: #667eea;
+    background: #f8f9ff;
+  }
+
+  .source-url {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    font-size: 13px;
+    color: #374151;
+    text-align: left;
+    cursor: pointer;
+    word-break: break-all;
+  }
+
+  .source-url:hover {
+    color: #667eea;
+  }
+
+  .source-badge {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.12);
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+
+  .add-row {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 10px;
-    margin-bottom: 12px;
   }
 
   .meting-input {
@@ -124,26 +239,43 @@
     background: #fff;
   }
 
-  .panel-title {
-    display: flex;
+  .btn {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    margin: 0 0 8px;
-    font-size: 16px;
-    font-weight: 600;
-    color: #333;
+    justify-content: center;
+    gap: 6px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
   }
 
-  .panel-desc,
-  .data-dir,
-  .empty-state {
-    margin: 0 0 12px;
-    font-size: 14px;
-    color: #666;
-    line-height: 1.6;
+  .add-btn {
+    padding: 8px 14px;
+    background: #667eea;
+    color: #fff;
+  }
+
+  .add-btn:hover {
+    background: #5a6fd6;
+  }
+
+  .icon-btn {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: #f3f4f6;
+    color: #6b7280;
+  }
+
+  .icon-btn.danger:hover {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
   }
 
   .data-dir {
+    margin: 16px 0 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
     color: #888;
@@ -151,7 +283,7 @@
   }
 
   .feedback {
-    margin: 0 0 12px;
+    margin: 12px 0 0;
     padding: 10px 12px;
     border-radius: 8px;
     font-size: 13px;
@@ -166,5 +298,4 @@
     background: rgba(239, 68, 68, 0.12);
     color: #b91c1c;
   }
-
 </style>

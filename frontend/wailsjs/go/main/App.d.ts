@@ -4,6 +4,8 @@ import {music} from '../models';
 
 export function AddFavorite(arg1:music.FavoriteSong):Promise<void>;
 
+export function ClearRecent():Promise<void>;
+
 export function GetLyric(arg1:string,arg2:string,arg3:string):Promise<music.LyricInfo>;
 
 export function GetMusicURL(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
@@ -16,6 +18,12 @@ export function IsFavorite(arg1:music.FavoriteSong):Promise<boolean>;
 
 export function ListFavorites():Promise<Array<music.FavoriteSong>>;
 
+export function ListRecent():Promise<Array<music.RecentSong>>;
+
+export function RecordRecent(arg1:music.RecentSong):Promise<void>;
+
 export function RemoveFavorite(arg1:music.FavoriteSong):Promise<void>;
+
+export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
 
 export function Search(arg1:string,arg2:string,arg3:string,arg4:number):Promise<music.SearchResult>;

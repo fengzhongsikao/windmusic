@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,19 +14,45 @@ import (
 
 var client = &http.Client{Timeout: 20 * time.Second}
 
-const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+const (
+	defaultMetingBase = "https://meting.mikus.ink"
+	defaultUserAgent  = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+)
 
-func stringValue(value interface{}) string {
-	if value == nil {
-		return ""
-	}
-	text := strings.TrimSpace(fmt.Sprint(value))
-	if text == "" || text == "<nil>" {
-		return ""
-	}
-	return text
+// metingItem 表示 Meting API 搜索返回的单条歌曲数据（兼容 title/author 与 name/artist）。
+type metingItem struct {
+	Title  string `json:"title"`
+	Name   string `json:"name"`
+	Author string `json:"author"`
+	Artist string `json:"artist"`
+	Pic    string `json:"pic"`
+	URL    string `json:"url"`
+	Lrc    string `json:"lrc"`
 }
 
+func (item metingItem) songTitle() string {
+	if title := strings.TrimSpace(item.Title); title != "" {
+		return title
+	}
+	return strings.TrimSpace(item.Name)
+}
+
+func (item metingItem) songAuthor() string {
+	if author := strings.TrimSpace(item.Author); author != "" {
+		return author
+	}
+	return strings.TrimSpace(item.Artist)
+}
+
+// metingTrack 搜索结果的持久化元数据（与 metingItem 字段一致，另含 id/server）。
+type metingTrack struct {
+	metingItem
+	ID     string `json:"id"`
+	Server string `json:"server"`
+}
+
+// SearchMeting 调用 Meting API 搜索歌曲，返回分页后的搜索结果。
+// platform 为前端固定的 tencent 或 netease。
 func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.SearchResult, error) {
 	if page < 1 {
 		page = 1
@@ -35,66 +60,59 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 	if limit <= 0 {
 		limit = 20
 	}
-	server, err := metingServer(platform)
+
+	server, err := metingAPIServer(platform)
 	if err != nil {
 		return nil, err
 	}
-	body, err := getMetingSearchList(normalizeMetingBase(baseURL), server, keyword)
+	if err := validateMetingSearch(server); err != nil {
+		return nil, err
+	}
+
+	items, err := searchMeting(normalizeMetingBase(baseURL), server, keyword)
 	if err != nil {
 		return nil, err
 	}
 
 	start := (page - 1) * limit
-	if start > len(body) {
-		start = len(body)
+	if start > len(items) {
+		start = len(items)
 	}
 	end := start + limit
-	if end > len(body) {
-		end = len(body)
+	if end > len(items) {
+		end = len(items)
 	}
 
 	list := make([]music.SongItem, 0, end-start)
-	for idx, row := range body[start:end] {
-		id := strings.TrimSpace(stringValue(row["id"]))
-		// Meting 标准字段：name / artist；同时兼容历史 title / author
-		title := strings.TrimSpace(stringValue(row["name"]))
-		if title == "" {
-			title = strings.TrimSpace(stringValue(row["title"]))
-		}
-		author := strings.TrimSpace(stringValue(row["artist"]))
-		if author == "" {
-			author = strings.TrimSpace(stringValue(row["author"]))
+	for idx, item := range items[start:end] {
+		title := item.songTitle()
+		author := item.songAuthor()
+		id := idFromMetingURL(item.URL)
+		if id == "" {
+			id = idFromMetingURL(item.Lrc)
 		}
 		if id == "" {
-			id = extractMetingIDFromResourceURL(strings.TrimSpace(stringValue(row["url"])))
-		}
-		if id == "" {
-			id = extractMetingIDFromResourceURL(strings.TrimSpace(stringValue(row["lrc"])))
-		}
-		if id == "" {
-			// 最后兜底，确保前端 keyed each 不会因为空/重复 id 崩溃。
 			id = fmt.Sprintf("meting:%s:%s:%d", title, author, start+idx)
 		}
-		metaObj := map[string]interface{}{
-			"id":      id,
-			"name":    title,
-			"artist":  author,
-			"pic":     strings.TrimSpace(stringValue(row["pic"])),
-			"url":     strings.TrimSpace(stringValue(row["url"])),
-			"lrc":     strings.TrimSpace(stringValue(row["lrc"])),
-			"server":  server,
-			"meting":  normalizeMetingBase(baseURL),
-			"rawItem": row,
-		}
-		metaJSON, _ := json.Marshal(metaObj)
+
+		metaJSON, _ := json.Marshal(metingTrack{
+			metingItem: metingItem{
+				Title:  title,
+				Author: author,
+				Pic:    strings.TrimSpace(item.Pic),
+				URL:    strings.TrimSpace(item.URL),
+				Lrc:    strings.TrimSpace(item.Lrc),
+			},
+			ID:     id,
+			Server: server,
+		})
+
 		list = append(list, music.SongItem{
 			ID:       id,
 			Name:     title,
 			Singer:   author,
-			Album:    "",
 			Source:   platform,
-			Interval: "",
-			Img:      strings.TrimSpace(stringValue(row["pic"])),
+			Img:      strings.TrimSpace(item.Pic),
 			SongMID:  id,
 			MetaJSON: string(metaJSON),
 		})
@@ -102,152 +120,53 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 
 	return &music.SearchResult{
 		List:   list,
-		Total:  len(body),
+		Total:  len(items),
 		Page:   page,
 		Limit:  limit,
 		Source: platform,
 	}, nil
 }
 
-func GetMetingMusicURL(baseURL, platform, metaJSON string) (string, error) {
-	meta := parseMetingMeta(metaJSON)
-	if raw := strings.TrimSpace(stringValue(meta["url"])); raw != "" {
-		return raw, nil
+// GetMetingMusicURL 返回搜索时写入 metaJSON 的 url 字段（Meting 播放地址）。
+func GetMetingMusicURL(metaJSON string) (string, error) {
+	meta := parseMetingTrack(metaJSON)
+	if u := strings.TrimSpace(meta.URL); u != "" {
+		return u, nil
 	}
-	id, resolved := resolveMetingID(baseURL, platform, meta)
-	if id == "" {
-		return "", fmt.Errorf("meting meta missing id")
-	}
-	if raw := strings.TrimSpace(stringValue(resolved["url"])); raw != "" {
-		return raw, nil
-	}
-	server, err := metingServer(platform)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s/api?server=%s&type=url&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id)), nil
+	return "", fmt.Errorf("meting meta missing url")
 }
 
-func GetMetingPic(baseURL, platform, metaJSON string) (string, error) {
-	meta := parseMetingMeta(metaJSON)
-	if raw := strings.TrimSpace(stringValue(meta["pic"])); raw != "" {
-		return raw, nil
+// GetMetingPic 返回搜索时写入 metaJSON 的 pic 字段。
+func GetMetingPic(metaJSON string) (string, error) {
+	meta := parseMetingTrack(metaJSON)
+	if pic := strings.TrimSpace(meta.Pic); pic != "" {
+		return pic, nil
 	}
-	id, resolved := resolveMetingID(baseURL, platform, meta)
-	if id == "" {
-		return "", fmt.Errorf("meting meta missing id")
-	}
-	if raw := strings.TrimSpace(stringValue(resolved["pic"])); raw != "" {
-		return raw, nil
-	}
-	server, err := metingServer(platform)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s/api?server=%s&type=pic&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id)), nil
+	return "", fmt.Errorf("meting meta missing pic")
 }
 
-func GetMetingLyric(baseURL, platform, metaJSON string) (*music.LyricInfo, error) {
-	meta := parseMetingMeta(metaJSON)
-	lrcURL := strings.TrimSpace(stringValue(meta["lrc"]))
+// GetMetingLyric 请求 metaJSON 中的 lrc 地址并返回歌词文本。
+func GetMetingLyric(metaJSON string) (*music.LyricInfo, error) {
+	lrcURL := strings.TrimSpace(parseMetingTrack(metaJSON).Lrc)
 	if lrcURL == "" {
-		id, resolved := resolveMetingID(baseURL, platform, meta)
-		if lrcURL == "" {
-			lrcURL = strings.TrimSpace(stringValue(resolved["lrc"]))
-		}
-		if id == "" {
-			return nil, fmt.Errorf("meting meta missing lrc/id")
-		}
-		if lrcURL == "" {
-			server, err := metingServer(platform)
-			if err != nil {
-				return nil, err
-			}
-			lrcURL = fmt.Sprintf("%s/api?server=%s&type=lrc&id=%s", normalizeMetingBase(baseURL), url.QueryEscape(server), url.QueryEscape(id))
-		}
+		return nil, fmt.Errorf("meting meta missing lrc")
 	}
-
-	text, err := getText(lrcURL)
+	text, err := httpGetText(lrcURL)
 	if err != nil {
 		return nil, err
 	}
 	return &music.LyricInfo{Lyric: strings.TrimSpace(text)}, nil
 }
 
-func resolveMetingID(baseURL, platform string, meta map[string]interface{}) (string, map[string]interface{}) {
-	if id := strings.TrimSpace(stringValue(meta["id"])); id != "" {
-		return id, meta
-	}
-
-	name := extractMetaSongName(meta)
-	artist := extractMetaArtist(meta)
-	keyword := strings.TrimSpace(strings.Join([]string{name, artist}, " "))
-	if keyword == "" {
-		return "", meta
-	}
-
-	server, err := metingServer(platform)
-	if err != nil {
-		return "", meta
-	}
-	items, err := getMetingSearchList(normalizeMetingBase(baseURL), server, keyword)
-	if err != nil || len(items) == 0 {
-		return "", meta
-	}
-	best := items[0]
-	if id := strings.TrimSpace(stringValue(best["id"])); id != "" {
-		return id, best
-	}
-	return "", meta
-}
-
-func extractMetaSongName(meta map[string]interface{}) string {
-	for _, key := range []string{"name", "songname", "SONGNAME", "title"} {
-		if v := strings.TrimSpace(stringValue(meta[key])); v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
-func extractMetaArtist(meta map[string]interface{}) string {
-	for _, key := range []string{"artist", "author", "singer", "singerName", "ARTIST"} {
-		if v := strings.TrimSpace(stringValue(meta[key])); v != "" {
-			return v
-		}
-	}
-	if rawArtists, ok := meta["artists"].([]interface{}); ok {
-		names := make([]string, 0, len(rawArtists))
-		for _, item := range rawArtists {
-			if artistMap, ok := item.(map[string]interface{}); ok {
-				if name := strings.TrimSpace(stringValue(artistMap["name"])); name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-		return strings.Join(names, " ")
-	}
-	if rawSingers, ok := meta["singer"].([]interface{}); ok {
-		names := make([]string, 0, len(rawSingers))
-		for _, item := range rawSingers {
-			if singerMap, ok := item.(map[string]interface{}); ok {
-				if name := strings.TrimSpace(stringValue(singerMap["name"])); name != "" {
-					names = append(names, name)
-				}
-			}
-		}
-		return strings.Join(names, " ")
-	}
-	return ""
-}
-
-func parseMetingMeta(metaJSON string) map[string]interface{} {
-	meta := map[string]interface{}{}
+func parseMetingTrack(metaJSON string) metingTrack {
+	meta := metingTrack{}
 	_ = json.Unmarshal([]byte(metaJSON), &meta)
 	return meta
 }
 
-func extractMetingIDFromResourceURL(raw string) string {
+// idFromMetingURL 从 Meting API 返回的 URL 中提取 id 查询参数。
+func idFromMetingURL(raw string) string {
+	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return ""
 	}
@@ -255,51 +174,12 @@ func extractMetingIDFromResourceURL(raw string) string {
 	if err != nil {
 		return ""
 	}
-	id := strings.TrimSpace(parsed.Query().Get("id"))
-	if id != "" {
-		return id
-	}
-	segments := strings.Split(strings.Trim(parsed.Path, "/"), "/")
-	if len(segments) == 0 {
-		return ""
-	}
-	last := strings.TrimSpace(segments[len(segments)-1])
-	if last == "" {
-		return ""
-	}
-	if _, err := strconv.ParseInt(last, 10, 64); err == nil {
-		return last
-	}
-	return ""
+	return strings.TrimSpace(parsed.Query().Get("id"))
 }
 
-func getMetingSearchList(baseURL, server, keyword string) ([]map[string]interface{}, error) {
-	// 先按 id 搜索（兼容推荐关键词），再回退到 s 搜索（兼容普通模糊搜索）。
-	idURL := fmt.Sprintf("%s/api?server=%s&type=search&id=%s", baseURL, url.QueryEscape(server), url.QueryEscape(keyword))
-	items, err := getJSONList(idURL)
-	if err != nil {
-		return nil, err
-	}
-	if len(items) > 0 {
-		return items, nil
-	}
-
-	sURL := fmt.Sprintf("%s/api?server=%s&type=search&s=%s", baseURL, url.QueryEscape(server), url.QueryEscape(keyword))
-	return getJSONList(sURL)
-}
-
-func normalizeMetingBase(raw string) string {
-	raw = strings.TrimSpace(raw)
-	raw = strings.TrimSuffix(raw, "/")
-	if raw == "" {
-		return "https://meting.mikus.ink"
-	}
-	return raw
-}
-
-func metingServer(platform string) (string, error) {
-	normalized := strings.ToLower(strings.TrimSpace(platform))
-	switch normalized {
+// metingAPIServer 将前端平台标识映射为 Meting API 的 server 参数。
+func metingAPIServer(platform string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
 	case "", "tx", "tencent", "qq":
 		return "tencent", nil
 	case "wy", "netease", "163":
@@ -309,7 +189,73 @@ func metingServer(platform string) (string, error) {
 	}
 }
 
-func getJSONList(rawURL string) ([]map[string]interface{}, error) {
+// validateMetingSearch 校验 Meting 节点是否支持该平台的搜索（mikus 节点仅 netease 支持 search）。
+func validateMetingSearch(server string) error {
+	if server == "netease" {
+		return nil
+	}
+	return fmt.Errorf("meting search is not supported for %s (QQ音乐仅支持单曲/歌单，请切换到网易云)", server)
+}
+
+// searchMeting 向 Meting API 发送搜索请求，返回原始歌曲列表。
+func searchMeting(baseURL, server, keyword string) ([]metingItem, error) {
+	idURL := fmt.Sprintf(
+		"%s/api?server=%s&type=search&id=%s",
+		baseURL,
+		url.QueryEscape(server),
+		url.QueryEscape(keyword),
+	)
+	items, err := httpGetJSON[[]metingItem](idURL)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+
+	sURL := fmt.Sprintf(
+		"%s/api?server=%s&type=search&s=%s",
+		baseURL,
+		url.QueryEscape(server),
+		url.QueryEscape(keyword),
+	)
+	return httpGetJSON[[]metingItem](sURL)
+}
+
+// normalizeMetingBase 规范化 Meting API 基础地址，去除尾部斜杠，空值时返回默认节点。
+func normalizeMetingBase(raw string) string {
+	raw = strings.TrimSpace(raw)
+	raw = strings.TrimSuffix(raw, "/")
+	if raw == "" {
+		return defaultMetingBase
+	}
+	return raw
+}
+
+// httpGetJSON 发送 GET 请求并将响应体反序列化为指定类型 T。
+func httpGetJSON[T any](rawURL string) (T, error) {
+	var zero T
+	data, err := httpGet(rawURL)
+	if err != nil {
+		return zero, err
+	}
+	if err := json.Unmarshal(data, &zero); err != nil {
+		return zero, fmt.Errorf("decode meting response failed: %w", err)
+	}
+	return zero, nil
+}
+
+// httpGetText 发送 GET 请求并返回响应体的纯文本内容。
+func httpGetText(rawURL string) (string, error) {
+	data, err := httpGet(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
+}
+
+// httpGet 执行底层 HTTP GET 请求，设置 UA 和 Accept 头，返回响应字节。
+func httpGet(rawURL string) ([]byte, error) {
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
@@ -323,41 +269,9 @@ func getJSONList(rawURL string) ([]map[string]interface{}, error) {
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var anyList []map[string]interface{}
-	if err := json.Unmarshal(data, &anyList); err == nil {
-		return anyList, nil
-	}
-
-	var one map[string]interface{}
-	if err := json.Unmarshal(data, &one); err == nil {
-		return []map[string]interface{}{one}, nil
-	}
-
-	return nil, fmt.Errorf("decode meting response failed")
-}
-
-func getText(rawURL string) (string, error) {
-	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("User-Agent", defaultUserAgent)
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
-		return "", fmt.Errorf("meting request failed: %d", resp.StatusCode)
+		return nil, fmt.Errorf("meting request failed: %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+
+	return io.ReadAll(resp.Body)
 }

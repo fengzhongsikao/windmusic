@@ -6,72 +6,73 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	models "windmusic/internal/music"
 )
 
-type FavoritesStore struct {
+const recentPlayMaxItems = 200
+
+type RecentStore struct {
 	path string
 	mu   sync.Mutex
 }
 
-func (s *FavoritesStore) List() ([]models.FavoriteSong, error) {
+func (s *RecentStore) List() ([]models.RecentSong, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.readLocked()
 }
 
-func (s *FavoritesStore) IsFavorite(song models.FavoriteSong) (bool, error) {
+func (s *RecentStore) Record(song models.RecentSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	favorites, err := s.readLocked()
-	if err != nil {
-		return false, err
-	}
-	for _, item := range favorites {
-		if sameFavoriteSong(item, song) {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (s *FavoritesStore) Add(song models.FavoriteSong) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	favorites, err := s.readLocked()
+	recent, err := s.readLocked()
 	if err != nil {
 		return err
 	}
-	for _, item := range favorites {
-		if sameFavoriteSong(item, song) {
-			return nil
+
+	entry := normalizeRecentSong(song)
+	entry.PlayedAt = time.Now().UTC()
+
+	next := make([]models.RecentSong, 0, len(recent)+1)
+	next = append(next, entry)
+	for _, item := range recent {
+		if !sameRecentSong(item, entry) {
+			next = append(next, item)
 		}
 	}
-	favorites = append(favorites, normalizeFavoriteSong(song))
-	return s.writeLocked(favorites)
+	if len(next) > recentPlayMaxItems {
+		next = next[:recentPlayMaxItems]
+	}
+	return s.writeLocked(next)
 }
 
-func (s *FavoritesStore) Remove(song models.FavoriteSong) error {
+func (s *RecentStore) Remove(song models.RecentSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	favorites, err := s.readLocked()
+	recent, err := s.readLocked()
 	if err != nil {
 		return err
 	}
-	next := make([]models.FavoriteSong, 0, len(favorites))
-	for _, item := range favorites {
-		if !sameFavoriteSong(item, song) {
+	next := make([]models.RecentSong, 0, len(recent))
+	for _, item := range recent {
+		if !sameRecentSong(item, song) {
 			next = append(next, item)
 		}
 	}
 	return s.writeLocked(next)
 }
 
-func (s *FavoritesStore) ensurePathLocked() (string, error) {
+func (s *RecentStore) Clear() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeLocked([]models.RecentSong{})
+}
+
+func (s *RecentStore) ensurePathLocked() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
@@ -79,11 +80,11 @@ func (s *FavoritesStore) ensurePathLocked() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	s.path = filepath.Join(rootDir, "favorites.json")
+	s.path = filepath.Join(rootDir, "recent.json")
 	return s.path, nil
 }
 
-func (s *FavoritesStore) readLocked() ([]models.FavoriteSong, error) {
+func (s *RecentStore) readLocked() ([]models.RecentSong, error) {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return nil, err
@@ -91,36 +92,21 @@ func (s *FavoritesStore) readLocked() ([]models.FavoriteSong, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []models.FavoriteSong{}, nil
+			return []models.RecentSong{}, nil
 		}
 		return nil, err
 	}
 	if len(data) == 0 {
-		return []models.FavoriteSong{}, nil
+		return []models.RecentSong{}, nil
 	}
-	var favorites []models.FavoriteSong
-	if err := json.Unmarshal(data, &favorites); err != nil {
+	var recent []models.RecentSong
+	if err := json.Unmarshal(data, &recent); err != nil {
 		return nil, err
 	}
-	return dedupeFavorites(favorites), nil
+	return recent, nil
 }
 
-func dedupeFavorites(favorites []models.FavoriteSong) []models.FavoriteSong {
-	normalized := make([]models.FavoriteSong, 0, len(favorites))
-	seen := make(map[string]struct{}, len(favorites))
-	for _, item := range favorites {
-		entry := normalizeFavoriteSong(item)
-		key := favoriteSongKey(entry)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		normalized = append(normalized, entry)
-	}
-	return normalized
-}
-
-func (s *FavoritesStore) writeLocked(favorites []models.FavoriteSong) error {
+func (s *RecentStore) writeLocked(recent []models.RecentSong) error {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return err
@@ -129,7 +115,17 @@ func (s *FavoritesStore) writeLocked(favorites []models.FavoriteSong) error {
 		return err
 	}
 
-	normalized := dedupeFavorites(favorites)
+	normalized := make([]models.RecentSong, 0, len(recent))
+	seen := make(map[string]struct{}, len(recent))
+	for _, item := range recent {
+		entry := normalizeRecentSong(item)
+		key := recentSongKey(entry)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, entry)
+	}
 
 	payload, err := json.MarshalIndent(normalized, "", "  ")
 	if err != nil {
@@ -139,8 +135,8 @@ func (s *FavoritesStore) writeLocked(favorites []models.FavoriteSong) error {
 	return os.WriteFile(path, payload, 0o644)
 }
 
-func normalizeFavoriteSong(song models.FavoriteSong) models.FavoriteSong {
-	return models.FavoriteSong{
+func normalizeRecentSong(song models.RecentSong) models.RecentSong {
+	entry := models.RecentSong{
 		ID:       strings.TrimSpace(song.ID),
 		Title:    strings.TrimSpace(song.Title),
 		Artist:   strings.TrimSpace(song.Artist),
@@ -151,16 +147,20 @@ func normalizeFavoriteSong(song models.FavoriteSong) models.FavoriteSong {
 		Platform: strings.TrimSpace(song.Platform),
 		MetaJSON: strings.TrimSpace(song.MetaJSON),
 	}
+	if !song.PlayedAt.IsZero() {
+		entry.PlayedAt = song.PlayedAt.UTC()
+	}
+	return entry
 }
 
-func favoriteSongKey(song models.FavoriteSong) string {
-	entry := normalizeFavoriteSong(song)
+func recentSongKey(song models.RecentSong) string {
+	entry := normalizeRecentSong(song)
 	return strings.Join([]string{entry.ID, entry.SourceID, entry.Platform, entry.MetaJSON}, "|")
 }
 
-func sameFavoriteSong(a, b models.FavoriteSong) bool {
-	left := normalizeFavoriteSong(a)
-	right := normalizeFavoriteSong(b)
+func sameRecentSong(a, b models.RecentSong) bool {
+	left := normalizeRecentSong(a)
+	right := normalizeRecentSong(b)
 
 	if left.MetaJSON != "" && right.MetaJSON != "" {
 		if left.MetaJSON != right.MetaJSON {
@@ -194,8 +194,4 @@ func sameFavoriteSong(a, b models.FavoriteSong) bool {
 		right.Artist != "" &&
 		left.Title == right.Title &&
 		left.Artist == right.Artist
-}
-
-func optionalEqual(a, b string) bool {
-	return a == "" || b == "" || a == b
 }

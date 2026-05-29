@@ -6,6 +6,10 @@ export function AddFavorite(arg1) {
   return window['go']['main']['App']['AddFavorite'](arg1);
 }
 
+export function ClearRecent() {
+  return window['go']['main']['App']['ClearRecent']();
+}
+
 export function GetLyric(arg1, arg2, arg3) {
   return window['go']['main']['App']['GetLyric'](arg1, arg2, arg3);
 }
@@ -30,8 +34,20 @@ export function ListFavorites() {
   return window['go']['main']['App']['ListFavorites']();
 }
 
+export function ListRecent() {
+  return window['go']['main']['App']['ListRecent']();
+}
+
+export function RecordRecent(arg1) {
+  return window['go']['main']['App']['RecordRecent'](arg1);
+}
+
 export function RemoveFavorite(arg1) {
   return window['go']['main']['App']['RemoveFavorite'](arg1);
+}
+
+export function RemoveRecent(arg1) {
+  return window['go']['main']['App']['RemoveRecent'](arg1);
 }
 
 export function Search(arg1, arg2, arg3, arg4) {

@@ -3,6 +3,7 @@ import { GetMusicURL } from '../../wailsjs/go/main/App';
 import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/player.svelte';
 import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
 import { error as errorToast } from '@/stores/toast';
+import { recordRecentPlay } from '@/lib/wailsPlayer';
 
 export const audioCurrentTime = writable(0);
 export const audioDuration = writable(0);
@@ -100,6 +101,8 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
   }
 
   try {
+    console.log('GetMusicURL', ctx.sourceId, ctx.platform, '', ctx.metaJson);
+    
     const url = await GetMusicURL(ctx.sourceId, ctx.platform, '', ctx.metaJson);
     if (token !== audioLoadToken || !audio) {
       return;
@@ -141,6 +144,7 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
       syncingFromAudio = true;
       setPlaying(true);
       syncingFromAudio = false;
+      void recordRecentPlay(track);
     }
   } catch (err) {
     if (token !== audioLoadToken) {
@@ -265,6 +269,13 @@ function onTrackOrPlayStateChange(track: PlayerTrack, playing: boolean) {
   }
 
   if (audio) {
+    const ctx = track.playback;
+    const hasPlayback = Boolean(ctx?.sourceId && ctx.platform && ctx.metaJson);
+    const hasSource = Boolean(audio.currentSrc || audio.src);
+    if (playing && hasPlayback && !hasSource) {
+      void loadAudioForTrack(track, true);
+      return;
+    }
     syncPlayState(playing);
   }
 }
@@ -273,6 +284,7 @@ export function initAudioEngine(el: HTMLAudioElement, root: HTMLElement) {
   audio = el;
   audioRoot = root;
   attachAudioListeners(el);
+  setAudioVolume(player.volume, player.isMuted);
 }
 
 export function syncPlayerState(track: PlayerTrack, playing: boolean) {

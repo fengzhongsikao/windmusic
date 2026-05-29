@@ -7,14 +7,15 @@
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
   import { getMetingPlatform, getMetingURL, metingSourceId } from '@/lib/meting';
-  import { player, setQueue, togglePlayByTrack } from '@/stores/player.svelte';
+  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
   import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
 
-  let activeTab = $state('all');
+  let activeTab = $state('recommend');
 
   const tabs = [
-    { id: 'all', label: '全部' },
+    { id: 'recommend', label: '推荐' },
     { id: 'chinese', label: '华语' },
     { id: 'pop', label: '流行' },
     { id: 'rock', label: '摇滚' },
@@ -24,7 +25,7 @@
   // 用和搜索页同一套后端 `App.Search` 拉取真实列表。
   // 这里的关键词会在后端做平台搜索，并返回结果列表。
   const CATEGORY_KEYWORDS: Record<string, string> = {
-    all: '热门',
+    recommend: '在银河中孤独摇摆伴奏',
     chinese: '华语',
     pop: '流行',
     rock: '摇滚',
@@ -85,21 +86,34 @@
     return trackItemToPlayerTrack(track, buildPlaybackContext(song, sourceId, ''));
   }
 
+  function allPlayerTracks() {
+    const metingURL = getMetingURL();
+    const sourceId = metingURL ? metingSourceId(metingURL) : '';
+    return songs.map((song) =>
+      trackItemToPlayerTrack(
+        {
+          id: song.id,
+          title: song.name,
+          artist: song.singer,
+          album: song.album,
+          duration: song.interval ?? '—',
+          coverUrl: song.img?.trim() || undefined,
+        },
+        buildPlaybackContext(song, sourceId, ''),
+      ),
+    );
+  }
+
   function playTrack(track: TrackItem) {
-    const playerTrack = resolvePlayerTrack(track);
-    console.info('[发现页] 点击歌曲，切换播放状态', {
-      id: playerTrack.id,
-      title: playerTrack.title,
-      artist: playerTrack.artist,
-      album: playerTrack.album,
-      coverUrl: playerTrack.coverUrl,
-      playback: playerTrack.playback,
-    });
-    togglePlayByTrack(playerTrack);
+    togglePlayByTrack(resolvePlayerTrack(track));
+  }
+
+  function playAll() {
+    playAllTracks(allPlayerTracks());
   }
 
   async function runRecommend(tabId: string) {
-    const keyword = CATEGORY_KEYWORDS[tabId] ?? CATEGORY_KEYWORDS.all;
+    const keyword = CATEGORY_KEYWORDS[tabId] ?? CATEGORY_KEYWORDS.recommend;
     const requestId = ++recommendRequestId;
     const cacheKey = `${CACHE_PREFIX}${tabId}`;
 
@@ -186,7 +200,7 @@
           }
         }
       }
-      const keyword = CATEGORY_KEYWORDS[tab.id] ?? CATEGORY_KEYWORDS.all;
+      const keyword = CATEGORY_KEYWORDS[tab.id] ?? CATEGORY_KEYWORDS.recommend;
       void getRecommendSongs(tab.id, keyword);
     }
   }
@@ -197,25 +211,6 @@
     void prefetchAllTabs();
   });
 
-  $effect(() => {
-    const metingURL = getMetingURL();
-    const sourceId = metingURL ? metingSourceId(metingURL) : '';
-    setQueue(
-      songs.map((song) =>
-        trackItemToPlayerTrack(
-          {
-            id: song.id,
-            title: song.name,
-            artist: song.singer,
-            album: song.album,
-            duration: song.interval ?? '—',
-            coverUrl: song.img?.trim() || undefined,
-          },
-          buildPlaybackContext(song, sourceId, ''),
-        ),
-      ),
-    );
-  });
 </script>
 
 <div class="home-page">
@@ -232,6 +227,9 @@
         </button>
       {/each}
     </div>
+    {#if tracks.length > 0 && !loading}
+      <PlayAllButton onclick={playAll} />
+    {/if}
   </div>
 
   {#if error}

@@ -10,6 +10,7 @@ import (
 type App struct {
 	ctx       context.Context
 	favorites appmusic.FavoritesStore
+	recent    appmusic.RecentStore
 }
 
 func NewApp() *App {
@@ -54,4 +55,20 @@ func (a *App) AddFavorite(song models.FavoriteSong) error {
 
 func (a *App) RemoveFavorite(song models.FavoriteSong) error {
 	return a.favorites.Remove(song)
+}
+
+func (a *App) ListRecent() ([]models.RecentSong, error) {
+	return a.recent.List()
+}
+
+func (a *App) RecordRecent(song models.RecentSong) error {
+	return a.recent.Record(song)
+}
+
+func (a *App) RemoveRecent(song models.RecentSong) error {
+	return a.recent.Remove(song)
+}
+
+func (a *App) ClearRecent() error {
+	return a.recent.Clear()
 }

@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, ListMusic, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
+  import { Music, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, Repeat1, MicVocal, Volume2, Volume1, Volume, VolumeX } from '@lucide/svelte';
   import {
     player,
     togglePlayerPlayback,
@@ -12,9 +12,11 @@
     playPreviousTrack,
     toggleShuffleMode,
     cycleRepeatMode,
+    repeatModeLabel,
     setPlayerVolume,
     togglePlayerMuted,
   } from '@/stores/player.svelte';
+  import PlayQueuePanel from '@/components/PlayQueuePanel.svelte';
   import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
   import {
@@ -38,6 +40,8 @@
   let volumeDisplay = $derived(`${isMuted ? 0 : volume}%`);
   let isShuffled = $derived(player.isShuffled);
   let repeatMode = $derived(player.repeatMode);
+  let repeatTitle = $derived(repeatModeLabel(repeatMode));
+  let shuffleTitle = $derived(isShuffled ? '随机播放已开启' : '随机播放');
   let isFavorite = $state(false);
   let favoritePending = $state(false);
   let favoriteCheckToken = 0;
@@ -55,14 +59,6 @@
   }
 
   function openSongDetail() {
-    openImmersiveView();
-  }
-
-  function handleBarClick(e: MouseEvent) {
-    const target = e.target as HTMLElement;
-    if (target.closest('button, a, input, .skeleton-slider')) {
-      return;
-    }
     openImmersiveView();
   }
 
@@ -166,17 +162,7 @@
   }
 </script>
 
-<div
-  class="player-bar"
-  class:immersive={barImmersive}
-  role="presentation"
-  onclick={handleBarClick}
-  onkeydown={(e) => {
-    if (e.key === 'Enter' && !(e.target as HTMLElement).closest('button, [role="slider"]')) {
-      openImmersiveView();
-    }
-  }}
->
+<div class="player-bar" class:immersive={barImmersive}>
   {#if barImmersive}
     <div
       class="bar-bg-cover"
@@ -231,7 +217,8 @@
         class="ctrl-btn small"
         class:active={isShuffled}
         onclick={toggleShuffle}
-        title="随机播放"
+        title={shuffleTitle}
+        aria-pressed={isShuffled}
       >
         <Shuffle size={16} />
       </button>
@@ -252,7 +239,8 @@
         class="ctrl-btn small"
         class:active={repeatMode !== 'off'}
         onclick={toggleRepeat}
-        title="循环模式"
+        title={repeatTitle}
+        aria-pressed={repeatMode !== 'off'}
       >
         {#if repeatMode === 'one'}
           <Repeat1 size={16} />
@@ -277,18 +265,7 @@
   </div>
 
   <div class="extra-controls">
-    <button
-      type="button"
-      class="ctrl-btn small"
-      title="歌词"
-      aria-label="打开歌词详情"
-      onclick={openSongDetail}
-    >
-      <MicVocal size={16} />
-    </button>
-    <button type="button" class="ctrl-btn small" title="播放列表">
-      <ListMusic size={16} />
-    </button>
+    <PlayQueuePanel immersive={barImmersive} />
     <div class="volume-control">
       <button type="button" class="ctrl-btn small" onclick={toggleMute} title={isMuted ? '取消静音' : '静音'}>
         {#if isMuted}

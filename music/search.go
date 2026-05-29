@@ -30,8 +30,7 @@ func GetMusicURL(sourceID, platform, quality, metaJSON string) (string, error) {
 	logPrefix := BackendLogPrefix(sourceID)
 	log.Printf("%s 开始获取播放地址 source=%s platform=%s quality=%s metaBytes=%d", logPrefix, source, platform, quality, len(metaJSON))
 
-	base := ResolveMetingBase(sourceID)
-	url, err := musicsearch.GetMetingMusicURL(base, platform, metaJSON)
+	url, err := musicsearch.GetMetingMusicURL(metaJSON)
 	if err != nil {
 		log.Printf("%s 获取播放地址失败 source=%s platform=%s quality=%s err=%v elapsed=%s", logPrefix, source, platform, quality, err, time.Since(startedAt))
 		return "", err
@@ -46,8 +45,7 @@ func GetLyric(sourceID, platform, metaJSON string) (*models.LyricInfo, error) {
 	logPrefix := BackendLogPrefix(sourceID)
 	log.Printf("%s 开始获取歌词 source=%s platform=%s metaBytes=%d", logPrefix, source, platform, len(metaJSON))
 
-	base := ResolveMetingBase(sourceID)
-	lyric, err := musicsearch.GetMetingLyric(base, platform, metaJSON)
+	lyric, err := musicsearch.GetMetingLyric(metaJSON)
 	if err != nil {
 		log.Printf("%s 获取歌词失败 source=%s platform=%s err=%v elapsed=%s", logPrefix, source, platform, err, time.Since(startedAt))
 		return nil, err
@@ -62,8 +60,7 @@ func GetPic(sourceID, platform, metaJSON string) (string, error) {
 	logPrefix := BackendLogPrefix(sourceID)
 	log.Printf("%s 开始获取封面 source=%s platform=%s metaBytes=%d", logPrefix, source, platform, len(metaJSON))
 
-	base := ResolveMetingBase(sourceID)
-	picURL, err := musicsearch.GetMetingPic(base, platform, metaJSON)
+	picURL, err := musicsearch.GetMetingPic(metaJSON)
 	if err != nil {
 		log.Printf("%s 获取封面失败 source=%s platform=%s err=%v elapsed=%s", logPrefix, source, platform, err, time.Since(startedAt))
 		return "", err

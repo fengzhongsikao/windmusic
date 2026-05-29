@@ -75,3 +75,16 @@ type FavoriteSong struct {
 	Platform string `json:"platform,omitempty"`
 	MetaJSON string `json:"metaJson,omitempty"`
 }
+
+type RecentSong struct {
+	ID       string    `json:"id"`
+	Title    string    `json:"title"`
+	Artist   string    `json:"artist"`
+	Album    string    `json:"album,omitempty"`
+	Duration string    `json:"duration,omitempty"`
+	CoverURL string    `json:"coverUrl,omitempty"`
+	SourceID string    `json:"sourceId,omitempty"`
+	Platform string    `json:"platform,omitempty"`
+	MetaJSON string    `json:"metaJson,omitempty"`
+	PlayedAt time.Time `json:"playedAt"`
+}
