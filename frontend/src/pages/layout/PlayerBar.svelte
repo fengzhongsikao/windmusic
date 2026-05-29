@@ -23,6 +23,7 @@
   import {
     audioCurrentTime,
     audioDuration,
+    audioLoading,
     seekAudio,
     setAudioVolume,
   } from '@/stores/audioEngine';
@@ -36,6 +37,7 @@
 
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
+  let loadingAudio = $derived($audioLoading);
   let volume = $derived(player.volume);
   let isMuted = $derived(player.isMuted);
   let volumeDisplay = $derived(`${isMuted ? 0 : volume}%`);
@@ -233,8 +235,16 @@
       <button type="button" class="ctrl-btn" title="上一首" onclick={() => playPreviousTrack()}>
         <SkipBack size={18} />
       </button>
-      <button type="button" class="ctrl-btn play-btn" onclick={togglePlay} title={player.isPlaying ? '暂停' : '播放'}>
-        {#if player.isPlaying}
+      <button
+        type="button"
+        class="ctrl-btn play-btn"
+        onclick={togglePlay}
+        disabled={loadingAudio}
+        title={loadingAudio ? '加载中…' : player.isPlaying ? '暂停' : '播放'}
+      >
+        {#if loadingAudio}
+          <span class="loading-dot" aria-hidden="true"></span>
+        {:else if player.isPlaying}
           <Pause size={18} />
         {:else}
           <Play size={18} />
@@ -546,6 +556,28 @@
     background: rgba(0, 0, 0, 0.08);
     color: #333;
     transform: scale(1.05);
+  }
+
+  .play-btn:disabled {
+    opacity: 0.7;
+    cursor: wait;
+    transform: none;
+  }
+
+  .loading-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .progress-section {

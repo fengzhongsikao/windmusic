@@ -18,6 +18,7 @@ import {
 import { music } from '../../wailsjs/go/models';
 import type { PlayerTrack } from '@/stores/player.svelte';
 import defaultCover from '@/assets/images/default.jpg';
+import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/localMusic';
 import { getMetingURL, metingSourceId } from '@/lib/meting';
 
 export type SongItem = music.SongItem;
@@ -229,12 +230,24 @@ export async function fetchCoverUrl(track: PlayerTrack): Promise<string> {
   }
 
   const ctx = track.playback;
-  if (!ctx?.sourceId || !ctx.metaJson) {
+  if (!ctx) {
+    return defaultCover;
+  }
+
+  if (isLocalStoredSong(ctx) || ctx.platform === LOCAL_PLATFORM) {
+    const filePath = ctx.localPath?.trim() || localPathFromMetaJson(ctx.metaJson) || String(track.id ?? '');
+    if (filePath) {
+      const { coverData } = await fetchLocalSongExtras(filePath);
+      return coverData || defaultCover;
+    }
+    return defaultCover;
+  }
+
+  if (!ctx.sourceId || !ctx.metaJson) {
     return defaultCover;
   }
 
   try {
-    console.log('fetchCoverUrl', ctx.sourceId, ctx.platform, ctx.metaJson);
     const url = await GetPic(ctx.sourceId, ctx.platform, ctx.metaJson);
     return url?.trim() || defaultCover;
   } catch {
@@ -337,6 +350,9 @@ export function toRecentSong(track: PlayerTrack): RecentSong {
 
 function hasPlayback(track: PlayerTrack): boolean {
   const ctx = track.playback;
+  if (ctx?.localPath?.trim()) {
+    return true;
+  }
   return Boolean(ctx?.sourceId && ctx.platform && ctx.metaJson);
 }
 

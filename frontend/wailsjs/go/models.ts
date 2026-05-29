@@ -28,6 +28,64 @@ export namespace music {
 	        this.metaJson = source["metaJson"];
 	    }
 	}
+	export class LocalCoverBatch {
+	    covers: Record<string, string>;
+	    paths: Record<string, string>;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalCoverBatch(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.covers = source["covers"];
+	        this.paths = source["paths"];
+	    }
+	}
+	export class LocalSong {
+	    id: string;
+	    title: string;
+	    artist: string;
+	    album?: string;
+	    duration?: string;
+	    filePath: string;
+	    format: string;
+	    size: string;
+	    coverData?: string;
+	    lyric?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalSong(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.title = source["title"];
+	        this.artist = source["artist"];
+	        this.album = source["album"];
+	        this.duration = source["duration"];
+	        this.filePath = source["filePath"];
+	        this.format = source["format"];
+	        this.size = source["size"];
+	        this.coverData = source["coverData"];
+	        this.lyric = source["lyric"];
+	    }
+	}
+	export class LocalSongExtras {
+	    coverData?: string;
+	    lyric?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalSongExtras(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.coverData = source["coverData"];
+	        this.lyric = source["lyric"];
+	    }
+	}
 	export class LyricInfo {
 	    lyric: string;
 	    tlyric?: string;

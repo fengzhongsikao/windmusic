@@ -10,6 +10,7 @@
     isPlaying?: boolean;
     indexOffset?: number;
     brokenCovers?: Record<string, true>;
+    coverByPath?: Record<string, string>;
     onSelect?: (track: TrackItem) => void;
     onOpenDetail?: (track: TrackItem) => void;
     onCoverError?: (url: string) => void;
@@ -18,6 +19,8 @@
     selectionMode?: boolean;
     selectedIds?: Record<string, true>;
     onToggleSelect?: (track: TrackItem, selected: boolean) => void;
+    /** Show file size column (local library) */
+    showSize?: boolean;
   }
 
   let {
@@ -26,6 +29,7 @@
     isPlaying = false,
     indexOffset = 0,
     brokenCovers = {},
+    coverByPath,
     onSelect,
     onOpenDetail,
     onCoverError,
@@ -34,9 +38,11 @@
     selectionMode = false,
     selectedIds = {},
     onToggleSelect,
+    showSize = false,
   }: Props = $props();
 
   const showPlaylistAction = $derived(Boolean(resolvePlayerTrack));
+  const sizeLabel = (track: TrackItem) => track.size?.trim() || '—';
 
   function handleOpenDetail(e: MouseEvent, track: TrackItem) {
     e.stopPropagation();
@@ -47,7 +53,15 @@
     return activeId != null && activeId === track.id;
   }
 
+  function coverKey(track: TrackItem): string {
+    return String(track.listKey ?? track.id);
+  }
+
   function getCoverUrl(track: TrackItem): string {
+    const fromMap = coverByPath?.[coverKey(track)];
+    if (fromMap?.trim()) {
+      return fromMap.trim();
+    }
     return track.coverUrl?.trim() ?? '';
   }
 
@@ -62,6 +76,7 @@
     class="track-list-header"
     class:selection-mode={selectionMode}
     class:has-actions={showPlaylistAction}
+    class:has-size={showSize}
     role="row"
   >
     {#if selectionMode}
@@ -71,6 +86,9 @@
     <span class="col-track" role="columnheader">歌曲</span>
     <span class="col-album" role="columnheader">专辑</span>
     <span class="col-duration" role="columnheader">时长</span>
+    {#if showSize}
+      <span class="col-size" role="columnheader">大小</span>
+    {/if}
     {#if showPlaylistAction}
       <span class="col-actions" role="columnheader" aria-hidden="true"></span>
     {/if}
@@ -82,6 +100,7 @@
       class:active={isActive(track)}
       class:selection-mode={selectionMode}
       class:has-actions={showPlaylistAction}
+      class:has-size={showSize}
       role="row"
       tabindex="0"
       onclick={() => {
@@ -158,6 +177,9 @@
 
       <span class="col-album" role="cell">{track.album}</span>
       <span class="col-duration" role="cell">{track.duration}</span>
+      {#if showSize}
+        <span class="col-size" role="cell">{sizeLabel(track)}</span>
+      {/if}
       {#if resolvePlayerTrack}
         <span class="col-actions" role="cell">
           <AddToPlaylistMenu
@@ -201,6 +223,26 @@
   .track-list-header.selection-mode.has-actions,
   .track-row.selection-mode.has-actions {
     grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 28%) 4.5rem 2.25rem;
+  }
+
+  .track-list-header.has-size,
+  .track-row.has-size {
+    grid-template-columns: 3rem minmax(0, 1fr) minmax(8rem, 24%) 4.5rem 4.5rem;
+  }
+
+  .track-list-header.has-size.has-actions,
+  .track-row.has-size.has-actions {
+    grid-template-columns: 3rem minmax(0, 1fr) minmax(8rem, 24%) 4.5rem 4.5rem 2.25rem;
+  }
+
+  .track-list-header.selection-mode.has-size,
+  .track-row.selection-mode.has-size {
+    grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 24%) 4.5rem 4.5rem;
+  }
+
+  .track-list-header.selection-mode.has-size.has-actions,
+  .track-row.selection-mode.has-size.has-actions {
+    grid-template-columns: 2rem 3rem minmax(0, 1fr) minmax(8rem, 24%) 4.5rem 4.5rem 2.25rem;
   }
 
   .col-select {
@@ -320,6 +362,13 @@
     color: #999;
     text-align: right;
     font-variant-numeric: tabular-nums;
+  }
+
+  .col-size {
+    font-size: 0.8125rem;
+    color: #999;
+    text-align: right;
+    white-space: nowrap;
   }
 
   .col-actions {

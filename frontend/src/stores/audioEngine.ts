@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
-import { GetMusicURL } from '../../wailsjs/go/main/App';
+import { GetLocalAudioStream, GetMusicURL } from '../../wailsjs/go/main/App';
+import { localPathFromMetaJson, LOCAL_PLATFORM } from '@/lib/localMusic';
 import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/player.svelte';
 import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
 import { error as errorToast } from '@/stores/toast';
@@ -80,7 +81,12 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
   }
 
   const ctx = track.playback;
-  if (!ctx?.sourceId || !ctx.platform || !ctx.metaJson) {
+  let localPath = ctx?.localPath?.trim() ?? '';
+  if (!localPath && ctx?.platform === LOCAL_PLATFORM) {
+    localPath = localPathFromMetaJson(ctx.metaJson) || String(track.id ?? '').trim();
+  }
+  const isLocal = localPath !== '';
+  if (!isLocal && (!ctx?.sourceId || !ctx.platform || !ctx.metaJson)) {
     syncingFromAudio = true;
     audio.pause();
     audio.removeAttribute('src');
@@ -101,9 +107,9 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
   }
 
   try {
-    console.log('GetMusicURL', ctx.sourceId, ctx.platform, '', ctx.metaJson);
-    
-    const url = await GetMusicURL(ctx.sourceId, ctx.platform, '', ctx.metaJson);
+    const url = isLocal
+      ? await GetLocalAudioStream(localPath)
+      : await GetMusicURL(ctx!.sourceId, ctx!.platform, '', ctx!.metaJson);
     if (token !== audioLoadToken || !audio) {
       return;
     }
@@ -111,9 +117,9 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
     console.info('前端[音频引擎] 获取播放地址结果', {
       title: track.title,
       artist: track.artist,
-      platform: ctx.platform,
-      sourceId: ctx.sourceId,
-      musicUrl: url,
+      platform: isLocal ? 'local' : ctx!.platform,
+      sourceId: isLocal ? 'local' : ctx!.sourceId,
+      local: isLocal,
     });
 
     const playableUrl = url.trim();
@@ -270,7 +276,9 @@ function onTrackOrPlayStateChange(track: PlayerTrack, playing: boolean) {
 
   if (audio) {
     const ctx = track.playback;
-    const hasPlayback = Boolean(ctx?.sourceId && ctx.platform && ctx.metaJson);
+    const hasPlayback = Boolean(
+      ctx?.localPath?.trim() || (ctx?.sourceId && ctx.platform && ctx.metaJson),
+    );
     const hasSource = Boolean(audio.currentSrc || audio.src);
     if (playing && hasPlayback && !hasSource) {
       void loadAudioForTrack(track, true);

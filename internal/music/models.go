@@ -95,3 +95,30 @@ type RecentSong struct {
 	MetaJSON string    `json:"metaJson,omitempty"`
 	PlayedAt time.Time `json:"playedAt"`
 }
+
+// LocalSong is a scanned audio file from the user's music folders.
+// Cover and lyrics are stored separately (see LocalSongExtras) to keep list payloads small.
+type LocalSong struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Artist    string `json:"artist"`
+	Album     string `json:"album,omitempty"`
+	Duration  string `json:"duration,omitempty"`
+	FilePath  string `json:"filePath"`
+	Format    string `json:"format"`
+	Size      string `json:"size"`
+	CoverData string `json:"coverData,omitempty"`
+	Lyric     string `json:"lyric,omitempty"`
+}
+
+// LocalSongExtras holds bulky metadata loaded on demand.
+type LocalSongExtras struct {
+	CoverData string `json:"coverData,omitempty"`
+	Lyric     string `json:"lyric,omitempty"`
+}
+
+// LocalCoverBatch returns deduplicated cover blobs for many tracks at once.
+type LocalCoverBatch struct {
+	Covers map[string]string `json:"covers"`
+	Paths  map[string]string `json:"paths"`
+}

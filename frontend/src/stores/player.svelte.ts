@@ -7,6 +7,8 @@ export type PlaybackContext = {
   sourceId: string;
   platform: string;
   metaJson: string;
+  /** Absolute path for local library playback */
+  localPath?: string;
 };
 
 export type PlayerTrack = Pick<
@@ -22,6 +24,11 @@ const DEFAULT_VOLUME = 30;
 const SETTINGS_KEY = 'windmusic:player-settings';
 
 function sameTrack(a: PlayerTrack, b: PlayerTrack): boolean {
+  const aLocal = a.playback?.localPath ?? '';
+  const bLocal = b.playback?.localPath ?? '';
+  if (aLocal || bLocal) {
+    return aLocal !== '' && aLocal === bLocal;
+  }
   return (
     String(a.id) === String(b.id) &&
     (a.playback?.sourceId ?? '') === (b.playback?.sourceId ?? '') &&

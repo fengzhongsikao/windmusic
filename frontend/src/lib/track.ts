@@ -6,5 +6,7 @@ export interface TrackItem {
   artist: string;
   album: string;
   duration: string;
+  /** File size label for local tracks (e.g. "8.2 MB") */
+  size?: string;
   coverUrl?: string;
 }

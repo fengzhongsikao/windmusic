@@ -11,6 +11,7 @@
   import { initAudioEngine } from '@/stores/audioEngine';
   import { fetchFavorites } from '@/lib/wailsPlayer';
   import { fetchPlaylists } from '@/lib/playlists';
+  import { preloadLocalLibrary } from '@/stores/localLibrary.svelte';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
@@ -24,6 +25,7 @@
   onMount(() => {
     void fetchFavorites().catch(() => {});
     void fetchPlaylists().catch(() => {});
+    void preloadLocalLibrary();
   });
 </script>
 

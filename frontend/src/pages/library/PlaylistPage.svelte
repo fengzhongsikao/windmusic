@@ -18,8 +18,8 @@
     removeSongFromPlaylist,
     type UserPlaylist,
   } from '@/lib/playlists';
+  import { storedSongToPlayerTrack } from '@/lib/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
-  import type { PlayerTrack } from '@/stores/player.svelte';
   import { error as toastError } from '@/stores/toast';
 
   interface Props {
@@ -54,23 +54,8 @@
 
   let currentSongId = $derived(player.currentSong.id);
 
-  function songToPlayerTrack(song: FavoriteSong): PlayerTrack {
-    return {
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      album: song.album ?? '',
-      duration: song.duration?.trim() || '—',
-      coverUrl: song.coverUrl?.trim() || undefined,
-      playback:
-        song.sourceId || song.platform || song.metaJson
-          ? {
-              sourceId: song.sourceId ?? '',
-              platform: song.platform ?? '',
-              metaJson: song.metaJson ?? '',
-            }
-          : undefined,
-    };
+  function songToPlayerTrack(song: FavoriteSong) {
+    return storedSongToPlayerTrack(song);
   }
 
   function playAll() {
@@ -81,20 +66,13 @@
   function playTrack(track: TrackItem) {
     if (editMode || !playlist) return;
     const song = playlist.songs.find((item) => favoriteSongKey(item) === track.listKey);
-    togglePlayByTrack({
+    togglePlayByTrack(song ? songToPlayerTrack(song) : {
       id: track.id,
       title: track.title,
       artist: track.artist,
       album: track.album,
       duration: track.duration,
       coverUrl: track.coverUrl,
-      playback: song
-        ? {
-            sourceId: song.sourceId ?? '',
-            platform: song.platform ?? '',
-            metaJson: song.metaJson ?? '',
-          }
-        : undefined,
     });
   }
 

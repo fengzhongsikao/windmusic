@@ -13,8 +13,8 @@
   } from '@/lib/wailsPlayer';
   import { formatPlayedAt } from '@/lib/recentTime';
   import PlayAllButton from '@/components/PlayAllButton.svelte';
-  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
-  import type { PlayerTrack } from '@/stores/player.svelte';
+  import { storedSongToPlayerTrack } from '@/lib/localMusic';
+  import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/player.svelte';
 
   let loading = $state(false);
   let error = $state('');
@@ -31,23 +31,8 @@
     return [song.id, song.sourceId, song.platform, song.metaJson].join('|');
   }
 
-  function recentToPlayerTrack(song: RecentSong): PlayerTrack {
-    return {
-      id: song.id,
-      title: song.title,
-      artist: song.artist,
-      album: song.album ?? '',
-      duration: song.duration?.trim() || '—',
-      coverUrl: song.coverUrl?.trim() || undefined,
-      playback:
-        song.sourceId || song.platform || song.metaJson
-          ? {
-              sourceId: song.sourceId ?? '',
-              platform: song.platform ?? '',
-              metaJson: song.metaJson ?? '',
-            }
-          : undefined,
-    };
+  function recentToPlayerTrack(song: RecentSong) {
+    return storedSongToPlayerTrack(song);
   }
 
   function playSong(song: RecentSong) {
@@ -190,9 +175,7 @@
       {#each recentSongs as song, index (songKey(song))}
         {@const cover = song.coverUrl?.trim() ?? ''}
         {@const hasCover = cover !== '' && !brokenCovers[cover]}
-        {@const active =
-          String(player.currentSong.id) === String(song.id) &&
-          (player.currentSong.playback?.metaJson ?? '') === (song.metaJson ?? '')}
+        {@const active = isCurrentTrack(recentToPlayerTrack(song))}
         <button
           type="button"
           class="song-row"

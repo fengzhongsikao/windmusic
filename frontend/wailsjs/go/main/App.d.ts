@@ -12,6 +12,12 @@ export function CreatePlaylist(arg1:string):Promise<music.UserPlaylist>;
 
 export function DeletePlaylist(arg1:string):Promise<void>;
 
+export function GetLocalAudioStream(arg1:string):Promise<string>;
+
+export function GetLocalSongCovers(arg1:Array<string>):Promise<music.LocalCoverBatch>;
+
+export function GetLocalSongExtras(arg1:string):Promise<music.LocalSongExtras>;
+
 export function GetLyric(arg1:string,arg2:string,arg3:string):Promise<music.LyricInfo>;
 
 export function GetMusicURL(arg1:string,arg2:string,arg3:string,arg4:string):Promise<string>;
@@ -26,16 +32,26 @@ export function IsFavorite(arg1:music.FavoriteSong):Promise<boolean>;
 
 export function ListFavorites():Promise<Array<music.FavoriteSong>>;
 
+export function ListLocalFolders():Promise<Array<string>>;
+
+export function ListLocalLibrary():Promise<Array<music.LocalSong>>;
+
 export function ListPlaylists():Promise<Array<music.UserPlaylist>>;
 
 export function ListRecent():Promise<Array<music.RecentSong>>;
+
+export function PickLocalMusicFolder():Promise<string>;
 
 export function RecordRecent(arg1:music.RecentSong):Promise<void>;
 
 export function RemoveFavorite(arg1:music.FavoriteSong):Promise<void>;
 
+export function RemoveLocalMusicFolder(arg1:string):Promise<void>;
+
 export function RemovePlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
 
 export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
+
+export function ScanLocalLibrary():Promise<Array<music.LocalSong>>;
 
 export function Search(arg1:string,arg2:string,arg3:string,arg4:number):Promise<music.SearchResult>;
