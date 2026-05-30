@@ -4,7 +4,7 @@
 <script lang="ts">
   import { Music, Search } from '@lucide/svelte';
   import { router } from 'svelte-spa-router';
-  import TrackList from '@/components/TrackList.svelte';
+  import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
   import {
@@ -13,12 +13,12 @@
     metingSourceId,
     type MetingPlatform,
   } from '@/lib/meting';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import {
     player,
     playAllTracks,
     togglePlayByTrack,
-  } from '@/stores/player.svelte';
+  } from '@/stores/playback/player.svelte';
   import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
   import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';

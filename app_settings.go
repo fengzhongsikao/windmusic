@@ -57,3 +57,4 @@ func (a *App) GetDiscoverRecommendCache(tabID string) (models.DiscoverRecommendC
 func (a *App) SetDiscoverRecommendCache(tabID string, songs []models.SongItem) error {
 	return a.discover.Set(tabID, songs)
 }
+

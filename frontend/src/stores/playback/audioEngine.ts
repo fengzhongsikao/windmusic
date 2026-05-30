@@ -1,9 +1,9 @@
 import { writable } from 'svelte/store';
-import { GetLocalAudioStream, GetMusicURL } from '../../wailsjs/go/main/App';
+import { GetLocalAudioStream, GetMusicURL } from '../../../wailsjs/go/main/App';
 import { localPathFromMetaJson, LOCAL_PLATFORM } from '@/lib/localMusic';
-import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/player.svelte';
-import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/lyrics';
-import { error as errorToast } from '@/stores/toast';
+import { player, playNextTrack, setPlaying, type PlayerTrack } from '@/stores/playback/player.svelte';
+import { loadLyricsForTrack, trackPlaybackKey } from '@/stores/playback/lyrics';
+import { error as errorToast } from '@/stores/ui/toast';
 import { recordRecentPlay } from '@/lib/wailsPlayer';
 
 export const audioCurrentTime = writable(0);

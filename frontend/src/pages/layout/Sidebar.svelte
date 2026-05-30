@@ -5,7 +5,7 @@
   import { onMount } from 'svelte';
   import { Music, House, ListMusic, Trophy, Heart, Clock, FolderOpen, Trash2 } from '@lucide/svelte';
   import { link, push } from 'svelte-spa-router';
-  import CreatePlaylistMenu from '@/components/CreatePlaylistMenu.svelte';
+  import CreatePlaylistMenu from '@/components/playlist/CreatePlaylistMenu.svelte';
   import {
     deleteUserPlaylist,
     fetchPlaylists,
@@ -13,7 +13,7 @@
     playlistActionErrorMessage,
     type UserPlaylist,
   } from '@/lib/playlists';
-  import { error as toastError } from '@/stores/toast';
+  import { error as toastError } from '@/stores/ui/toast';
 
   const menuItems = [
     { id: 'home', label: '首页', icon: House, path: '/' },

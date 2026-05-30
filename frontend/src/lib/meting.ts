@@ -1,4 +1,4 @@
-/** @deprecated 请从 `@/stores/meting.svelte` 导入 */
+/** @deprecated 请从 `@/stores/sources/meting.svelte` 导入 */
 export {
   type MetingPlatform,
   normalizeMetingURL,
@@ -11,4 +11,4 @@ export {
   getMetingPlatform,
   setMetingPlatform,
   metingSourceId,
-} from '@/stores/meting.svelte';
+} from '@/stores/sources/meting.svelte';

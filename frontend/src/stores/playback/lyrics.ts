@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
-import type { PlayerTrack } from '@/stores/player';
-import { GetLyric } from '../../wailsjs/go/main/App';
+import type { PlayerTrack } from '@/stores/playback/player';
+import { GetLyric } from '../../../wailsjs/go/main/App';
 import { fetchLocalSongExtras } from '@/lib/localMusic';
 
 export const lrcRaw = writable('');

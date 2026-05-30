@@ -1,4 +1,4 @@
-package music
+package persist
 
 import (
 	"crypto/rand"
@@ -12,6 +12,7 @@ import (
 	"time"
 
 	models "windmusic/internal/music"
+	"windmusic/music/appdata"
 )
 
 var (
@@ -192,7 +193,7 @@ func (s *PlaylistsStore) ensurePathLocked() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
-	rootDir, err := AppDataRootDir()
+	rootDir, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

@@ -4,7 +4,9 @@ import (
 	"context"
 
 	models "windmusic/internal/music"
-	appmusic "windmusic/music"
+	"windmusic/music/appdata"
+	"windmusic/music/cache"
+	"windmusic/music/persist"
 	localmusic "windmusic/music/local"
 	metingmusic "windmusic/music/meting"
 
@@ -13,18 +15,18 @@ import (
 
 type App struct {
 	ctx       context.Context
-	favorites appmusic.FavoritesStore
-	recent    appmusic.RecentStore
-	playlists appmusic.PlaylistsStore
+	favorites persist.FavoritesStore
+	recent    persist.RecentStore
+	playlists persist.PlaylistsStore
 	local     localmusic.LocalLibraryStore
-	player    appmusic.PlayerSettingsStore
-	meting    appmusic.MetingSettingsStore
-	discover  *appmusic.DiscoverCache
+	player    persist.PlayerSettingsStore
+	meting    persist.MetingSettingsStore
+	discover  *cache.DiscoverCache
 }
 
 func NewApp() *App {
 	return &App{
-		discover: appmusic.NewDiscoverCache(),
+		discover: cache.NewDiscoverCache(),
 	}
 }
 
@@ -32,6 +34,26 @@ func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.bootstrapAppData()
 	go a.bootstrapLocalLibrary()
+}
+
+func (a *App) Search(sourceID, platform, keyword string, page int) (*models.SearchResult, error) {
+	return metingmusic.Search(sourceID, platform, keyword, page)
+}
+
+func (a *App) GetMusicURL(sourceID, platform, quality, metaJSON string) (string, error) {
+	return metingmusic.GetMusicURL(sourceID, platform, quality, metaJSON)
+}
+
+func (a *App) GetLyric(sourceID, platform, metaJSON string) (*models.LyricInfo, error) {
+	return metingmusic.GetLyric(sourceID, platform, metaJSON)
+}
+
+func (a *App) GetPic(sourceID, platform, metaJSON string) (string, error) {
+	return metingmusic.GetPic(sourceID, platform, metaJSON)
+}
+
+func (a *App) GetSourceDataDir() (string, error) {
+	return appdata.AppDataRootDir()
 }
 
 func (a *App) localLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
@@ -79,235 +101,4 @@ func (a *App) emitLocalLibraryScanning(scanning bool) {
 		return
 	}
 	runtime.EventsEmit(a.ctx, localmusic.EventLibraryScanning, scanning)
-}
-
-func (a *App) bootstrapLocalLibrary() {
-	a.emitLocalLibrarySnapshot()
-
-	snapshot, err := a.localLibrarySnapshot()
-	if err != nil {
-		return
-	}
-	if len(snapshot.Folders) == 0 || snapshot.FolderCounts[models.LocalAllTabID] > 0 {
-		return
-	}
-
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	if _, err := a.local.Scan(); err != nil {
-		return
-	}
-	a.emitLocalLibrarySnapshot()
-}
-
-func (a *App) scanAndEmitLocalLibrary() error {
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	if _, err := a.local.Scan(); err != nil {
-		return err
-	}
-	a.emitLocalLibrarySnapshot()
-	return nil
-}
-
-func (a *App) Search(sourceID, platform, keyword string, page int) (*models.SearchResult, error) {
-	return metingmusic.Search(sourceID, platform, keyword, page)
-}
-
-func (a *App) GetMusicURL(sourceID, platform, quality, metaJSON string) (string, error) {
-	return metingmusic.GetMusicURL(sourceID, platform, quality, metaJSON)
-}
-
-func (a *App) GetLyric(sourceID, platform, metaJSON string) (*models.LyricInfo, error) {
-	return metingmusic.GetLyric(sourceID, platform, metaJSON)
-}
-
-func (a *App) GetPic(sourceID, platform, metaJSON string) (string, error) {
-	return metingmusic.GetPic(sourceID, platform, metaJSON)
-}
-
-func (a *App) GetSourceDataDir() (string, error) {
-	return appmusic.AppDataRootDir()
-}
-
-func (a *App) ListFavorites() ([]models.FavoriteSong, error) {
-	return a.favorites.List()
-}
-
-func (a *App) IsFavorite(song models.FavoriteSong) (bool, error) {
-	return a.favorites.IsFavorite(song)
-}
-
-func (a *App) AddFavorite(song models.FavoriteSong) error {
-	if err := a.favorites.Add(song); err != nil {
-		return err
-	}
-	a.emitFavorites()
-	return nil
-}
-
-func (a *App) RemoveFavorite(song models.FavoriteSong) error {
-	if err := a.favorites.Remove(song); err != nil {
-		return err
-	}
-	a.emitFavorites()
-	return nil
-}
-
-func (a *App) ListRecent() ([]models.RecentSong, error) {
-	return a.recent.List()
-}
-
-func (a *App) RecordRecent(song models.RecentSong) error {
-	if err := a.recent.Record(song); err != nil {
-		return err
-	}
-	a.emitRecent()
-	return nil
-}
-
-func (a *App) RemoveRecent(song models.RecentSong) error {
-	if err := a.recent.Remove(song); err != nil {
-		return err
-	}
-	a.emitRecent()
-	return nil
-}
-
-func (a *App) ClearRecent() error {
-	if err := a.recent.Clear(); err != nil {
-		return err
-	}
-	a.emitRecent()
-	return nil
-}
-
-func (a *App) ListPlaylists() ([]models.UserPlaylist, error) {
-	return a.playlists.List()
-}
-
-func (a *App) CreatePlaylist(name string) (models.UserPlaylist, error) {
-	playlist, err := a.playlists.Create(name)
-	if err != nil {
-		return models.UserPlaylist{}, err
-	}
-	a.emitPlaylists()
-	return playlist, nil
-}
-
-func (a *App) GetPlaylist(id string) (models.UserPlaylist, error) {
-	return a.playlists.Get(id)
-}
-
-func (a *App) AddPlaylistSong(playlistID string, song models.FavoriteSong) error {
-	if err := a.playlists.AddSong(playlistID, song); err != nil {
-		return err
-	}
-	a.emitPlaylists()
-	return nil
-}
-
-func (a *App) RemovePlaylistSong(playlistID string, song models.FavoriteSong) error {
-	if err := a.playlists.RemoveSong(playlistID, song); err != nil {
-		return err
-	}
-	a.emitPlaylists()
-	return nil
-}
-
-func (a *App) DeletePlaylist(id string) error {
-	if err := a.playlists.Delete(id); err != nil {
-		return err
-	}
-	a.emitPlaylists()
-	return nil
-}
-
-func (a *App) PickLocalMusicFolder() (string, error) {
-	dir, err := localmusic.PickMusicFolder(a.ctx)
-	if err != nil || dir == "" {
-		return dir, err
-	}
-	if err := a.local.AddFolder(dir); err != nil {
-		return "", err
-	}
-	if err := a.scanAndEmitLocalLibrary(); err != nil {
-		return dir, err
-	}
-	return dir, nil
-}
-
-func (a *App) GetLocalLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
-	return a.localLibrarySnapshot()
-}
-
-func (a *App) ListLocalFolders() ([]string, error) {
-	return a.local.ListFolders()
-}
-
-func (a *App) RemoveLocalMusicFolder(folderPath string) error {
-	if err := a.local.RemoveFolder(folderPath); err != nil {
-		return err
-	}
-	return a.scanAndEmitLocalLibrary()
-}
-
-func (a *App) SetLocalFolderAlias(folderPath, alias string) error {
-	if err := a.local.SetFolderAlias(folderPath, alias); err != nil {
-		return err
-	}
-	a.emitLocalLibrarySnapshot()
-	return nil
-}
-
-func (a *App) ListLocalLibrary() ([]models.LocalSong, error) {
-	return a.local.ListCached()
-}
-
-func (a *App) GetLocalFolderSongs(folderKey string) ([]models.LocalSong, error) {
-	songs, err := a.local.ListCachedForFolder(folderKey)
-	if err != nil {
-		return nil, err
-	}
-	if songs == nil {
-		return []models.LocalSong{}, nil
-	}
-	return songs, nil
-}
-
-func (a *App) GetLocalLibraryTracksIndex() (map[string][]models.LocalSong, error) {
-	index, err := a.local.AllFolderSongs()
-	if err != nil {
-		return nil, err
-	}
-	if index == nil {
-		return map[string][]models.LocalSong{}, nil
-	}
-	return index, nil
-}
-
-func (a *App) ScanLocalLibrary() ([]models.LocalSong, error) {
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	songs, err := a.local.Scan()
-	if err != nil {
-		return nil, err
-	}
-	a.emitLocalLibrarySnapshot()
-	return songs, nil
-}
-
-func (a *App) GetLocalAudioStream(filePath string) (string, error) {
-	return localmusic.GetLocalAudioStream(&a.local, filePath)
-}
-
-func (a *App) GetLocalSongExtras(filePath string) (models.LocalSongExtras, error) {
-	return a.local.GetSongExtras(filePath)
-}
-
-func (a *App) GetLocalSongCovers(filePaths []string) (models.LocalCoverBatch, error) {
-	return a.local.GetCovers(filePaths)
 }

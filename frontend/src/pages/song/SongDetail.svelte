@@ -3,11 +3,11 @@
 -->
 <script lang="ts">
   import { Music, LoaderCircle } from '@lucide/svelte';
-  import SpectrumAnalyzer from '@/components/SpectrumAnalyzer.svelte';
-  import { player } from '@/stores/player.svelte';
+  import SpectrumAnalyzer from '@/components/player/SpectrumAnalyzer.svelte';
+  import { player } from '@/stores/playback/player.svelte';
   import { parseLrc, findActiveLineIndex, type LrcLine } from '@/lib/lrc';
-  import { lrcRaw, lyricLoading, lyricError } from '@/stores/lyrics';
-  import { audioCurrentTime, audioLoading, audioError, mountAudioTo, seekAudio } from '@/stores/audioEngine';
+  import { lrcRaw, lyricLoading, lyricError } from '@/stores/playback/lyrics';
+  import { audioCurrentTime, audioLoading, audioError, mountAudioTo, seekAudio } from '@/stores/playback/audioEngine';
   import defaultCover from '@/assets/images/default.jpg';
 
   let track = $derived(player.currentSong);

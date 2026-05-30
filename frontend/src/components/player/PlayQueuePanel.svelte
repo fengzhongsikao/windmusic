@@ -12,7 +12,7 @@
     clearQueue,
     togglePlayerPlayback,
     type PlayerTrack,
-  } from '@/stores/player.svelte';
+  } from '@/stores/playback/player.svelte';
 
   interface Props {
     immersive?: boolean;

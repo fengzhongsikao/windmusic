@@ -1,6 +1,6 @@
-import { ListFavorites } from '../../wailsjs/go/main/App';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { music } from '../../wailsjs/go/models';
+import { ListFavorites } from '../../../wailsjs/go/main/App';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { music } from '../../../wailsjs/go/models';
 import { favoriteSongKey, normalizeFavoriteSong, type FavoriteSong } from '@/lib/favoriteSong';
 
 export const FAVORITES_UPDATED_EVENT = 'favorites:updated';

@@ -5,7 +5,7 @@
     metingSettings,
     removeMetingURL,
     setActiveMetingURL,
-  } from '@/stores/meting.svelte';
+  } from '@/stores/sources/meting.svelte';
   import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
 
   let dataDir = $state('');

@@ -12,7 +12,7 @@ import {
 } from '../../wailsjs/go/main/App';
 import { music } from '../../wailsjs/go/models';
 import type { TrackItem } from '@/lib/track';
-import type { PlaybackContext, PlayerTrack } from '@/stores/player.svelte';
+import type { PlaybackContext, PlayerTrack } from '@/stores/playback/player.svelte';
 import { trackItemToPlayerTrack } from '@/lib/playerTrack';
 
 export type LocalSong = music.LocalSong;

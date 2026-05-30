@@ -1,8 +1,8 @@
 <script lang="ts">
-  import TrackList from '@/components/TrackList.svelte';
+  import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { LOCAL_ALL_TAB_ID, localLibrary } from '@/stores/localLibrary.svelte';
-  import { player } from '@/stores/player.svelte';
+  import { LOCAL_ALL_TAB_ID, localLibrary } from '@/stores/library/localLibrary.svelte';
+  import { player } from '@/stores/playback/player.svelte';
 
   interface Props {
     tabId: string;

@@ -14,7 +14,7 @@ import (
 	"sync"
 
 	models "windmusic/internal/music"
-	"windmusic/music"
+	"windmusic/music/appdata"
 
 	"github.com/dhowden/tag"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -114,7 +114,7 @@ type localSongExtras struct {
 }
 
 func (s *LocalLibraryStore) foldersPath() (string, error) {
-	root, err := music.AppDataRootDir()
+	root, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}
@@ -122,7 +122,7 @@ func (s *LocalLibraryStore) foldersPath() (string, error) {
 }
 
 func (s *LocalLibraryStore) cachePath() (string, error) {
-	root, err := music.AppDataRootDir()
+	root, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}
@@ -130,7 +130,7 @@ func (s *LocalLibraryStore) cachePath() (string, error) {
 }
 
 func (s *LocalLibraryStore) extrasPath() (string, error) {
-	root, err := music.AppDataRootDir()
+	root, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

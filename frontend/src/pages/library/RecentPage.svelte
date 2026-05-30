@@ -12,9 +12,9 @@
     type RecentSong,
   } from '@/lib/wailsPlayer';
   import { formatPlayedAt } from '@/lib/recentTime';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
-  import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/player.svelte';
+  import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/playback/player.svelte';
 
   let loading = $state(false);
   let error = $state('');

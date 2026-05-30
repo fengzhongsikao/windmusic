@@ -3,7 +3,7 @@
 -->
 <script lang="ts">
   import { Check, Folder, FolderOpen, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/svelte';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import LocalFolderTrackPanel from '@/pages/library/LocalFolderTrackPanel.svelte';
   import type { TrackItem } from '@/lib/track';
   import {
@@ -19,10 +19,10 @@
     localLibrary,
     scanLocalLibrary,
     setLocalActiveFolderTab,
-  } from '@/stores/localLibrary.svelte';
-  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
-  import { audioLoading } from '@/stores/audioEngine';
-  import { error as toastError } from '@/stores/toast';
+  } from '@/stores/library/localLibrary.svelte';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
+  import { audioLoading } from '@/stores/playback/audioEngine';
+  import { error as toastError } from '@/stores/ui/toast';
 
   let pageError = $state('');
   let removingPath = $state('');

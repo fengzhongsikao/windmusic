@@ -3,12 +3,12 @@
   数据走 App.Search（与搜索页同一后端），推荐结果缓存在 Go 端内存，带 Tab 预取。
 -->
 <script lang="ts">
-  import TrackList from '@/components/TrackList.svelte';
+  import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/stores/meting.svelte';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
-  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
+  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import {
     GetDiscoverRecommendCache,
     Search as searchApi,

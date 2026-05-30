@@ -4,9 +4,9 @@ import {
   RemoveMetingURL,
   SetActiveMetingURL,
   SetMetingPlatform,
-} from '../../wailsjs/go/main/App';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { music } from '../../wailsjs/go/models';
+} from '../../../wailsjs/go/main/App';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { music } from '../../../wailsjs/go/models';
 
 export type MetingPlatform = 'netease';
 

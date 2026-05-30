@@ -15,19 +15,19 @@ import {
   ClearRecent,
 } from '../../wailsjs/go/main/App';
 import { music } from '../../wailsjs/go/models';
-import type { PlayerTrack } from '@/stores/player.svelte';
+import type { PlayerTrack } from '@/stores/playback/player.svelte';
 import defaultCover from '@/assets/images/default.jpg';
 import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/localMusic';
-import { getMetingURL, metingSourceId } from '@/stores/meting.svelte';
+import { getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
 import {
   favoriteSongKey,
   normalizeFavoriteSong,
   sameFavoriteSong,
   type FavoriteSong,
 } from '@/lib/favoriteSong';
-import { getFavorites } from '@/stores/favorites.svelte';
-import { FAVORITES_UPDATED_EVENT } from '@/stores/favorites.svelte';
-import { RECENT_UPDATED_EVENT } from '@/stores/recent.svelte';
+import { getFavorites } from '@/stores/library/favorites.svelte';
+import { FAVORITES_UPDATED_EVENT } from '@/stores/library/favorites.svelte';
+import { RECENT_UPDATED_EVENT } from '@/stores/library/recent.svelte';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type SongItem = music.SongItem;
@@ -56,7 +56,7 @@ export function onRecentChanged(listener: () => void): () => void {
   return EventsOn(RECENT_UPDATED_EVENT, () => listener());
 }
 
-import { getRecentSongs } from '@/stores/recent.svelte';
+import { getRecentSongs } from '@/stores/library/recent.svelte';
 
 export async function fetchRecentSongs(): Promise<import('@/lib/recentSong').RecentSong[]> {
   return [...getRecentSongs()];

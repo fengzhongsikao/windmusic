@@ -2,8 +2,6 @@ package meting
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -40,12 +38,4 @@ func BackendLogPrefix(sourceID string) string {
 		return "[后端meting]"
 	}
 	return "[后端meting]"
-}
-
-func AppDataRootDir() (string, error) {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(configDir, "windmusic"), nil
 }

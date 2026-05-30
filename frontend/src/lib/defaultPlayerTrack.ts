@@ -1,5 +1,5 @@
-import { getMetingURL, metingSourceId } from '@/stores/meting.svelte';
-import type { PlayerTrack } from '@/stores/player';
+import { getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
+import type { PlayerTrack } from '@/stores/playback/player';
 
 export const DEFAULT_TRACK_ID = '2155422574';
 

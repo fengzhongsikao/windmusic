@@ -4,7 +4,7 @@
 <script lang="ts">
   import { CirclePlus } from '@lucide/svelte';
   import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
-  import PlaylistCreateFields from '@/components/PlaylistCreateFields.svelte';
+  import PlaylistCreateFields from '@/components/playlist/PlaylistCreateFields.svelte';
 
   interface Props {
     onCreated?: () => void;

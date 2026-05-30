@@ -13,8 +13,8 @@ import {
   getCachedPlaylist,
   getPlaylists,
   setCachedPlaylist,
-} from '@/stores/playlistsStore.svelte';
-import { PLAYLISTS_UPDATED_EVENT } from '@/stores/playlistsStore.svelte';
+} from '@/stores/library/playlistsStore.svelte';
+import { PLAYLISTS_UPDATED_EVENT } from '@/stores/library/playlistsStore.svelte';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type UserPlaylist = {

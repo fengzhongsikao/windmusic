@@ -1,4 +1,4 @@
-package music
+package persist
 
 import (
 	"encoding/json"
@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	models "windmusic/internal/music"
+	"windmusic/music/appdata"
 )
 
 var httpURLPattern = regexp.MustCompile(`(?i)^https?://`)
@@ -87,7 +88,7 @@ func (s *MetingSettingsStore) settingsPath() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
-	root, err := AppDataRootDir()
+	root, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

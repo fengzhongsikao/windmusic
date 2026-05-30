@@ -2,7 +2,7 @@ package main
 
 import (
 	models "windmusic/internal/music"
-	appmusic "windmusic/music"
+	"windmusic/music/events"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -23,7 +23,7 @@ func (a *App) emitPlayerSettings() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, appmusic.EventPlayerSettingsUpdated, settings)
+	runtime.EventsEmit(a.ctx, events.EventPlayerSettingsUpdated, settings)
 }
 
 func (a *App) emitMetingSettings() {
@@ -34,7 +34,7 @@ func (a *App) emitMetingSettings() {
 	if err != nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, appmusic.EventMetingSettingsUpdated, settings)
+	runtime.EventsEmit(a.ctx, events.EventMetingSettingsUpdated, settings)
 }
 
 func (a *App) emitFavorites() {
@@ -48,7 +48,7 @@ func (a *App) emitFavorites() {
 	if items == nil {
 		items = []models.FavoriteSong{}
 	}
-	runtime.EventsEmit(a.ctx, appmusic.EventFavoritesUpdated, items)
+	runtime.EventsEmit(a.ctx, events.EventFavoritesUpdated, items)
 }
 
 func (a *App) emitRecent() {
@@ -62,7 +62,7 @@ func (a *App) emitRecent() {
 	if items == nil {
 		items = []models.RecentSong{}
 	}
-	runtime.EventsEmit(a.ctx, appmusic.EventRecentUpdated, items)
+	runtime.EventsEmit(a.ctx, events.EventRecentUpdated, items)
 }
 
 func (a *App) emitPlaylists() {
@@ -76,5 +76,5 @@ func (a *App) emitPlaylists() {
 	if items == nil {
 		items = []models.UserPlaylist{}
 	}
-	runtime.EventsEmit(a.ctx, appmusic.EventPlaylistsUpdated, items)
+	runtime.EventsEmit(a.ctx, events.EventPlaylistsUpdated, items)
 }

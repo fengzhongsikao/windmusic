@@ -7,8 +7,8 @@ import {
   type LocalSong,
 } from '@/lib/localMusic';
 import type { TrackItem } from '@/lib/track';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { music } from '../../wailsjs/go/models';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { music } from '../../../wailsjs/go/models';
 
 export const LOCAL_ALL_TAB_ID = 'all';
 

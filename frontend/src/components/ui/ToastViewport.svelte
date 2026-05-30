@@ -1,6 +1,6 @@
 <script lang="ts">
   import { AlertCircle, Info, CheckCircle2, X } from '@lucide/svelte';
-  import { dismiss, toasts } from '@/stores/toast';
+  import { dismiss, toasts } from '@/stores/ui/toast';
 </script>
 
 <div class="toast-viewport" aria-live="polite" aria-atomic="true">

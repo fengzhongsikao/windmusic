@@ -1,7 +1,7 @@
-import { GetPlayerSettings, UpdatePlayerSettings } from '../../wailsjs/go/main/App';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { music } from '../../wailsjs/go/models';
-import { player, type RepeatMode } from '@/stores/player.svelte';
+import { GetPlayerSettings, UpdatePlayerSettings } from '../../../wailsjs/go/main/App';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
+import { music } from '../../../wailsjs/go/models';
+import { player, type RepeatMode } from '@/stores/playback/player.svelte';
 
 export const PLAYER_SETTINGS_UPDATED_EVENT = 'player-settings:updated';
 

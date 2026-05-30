@@ -15,9 +15,9 @@
     repeatModeLabel,
     setPlayerVolume,
     togglePlayerMuted,
-  } from '@/stores/player.svelte';
-  import PlayQueuePanel from '@/components/PlayQueuePanel.svelte';
-  import AddToPlaylistMenu from '@/components/AddToPlaylistMenu.svelte';
+  } from '@/stores/playback/player.svelte';
+  import PlayQueuePanel from '@/components/player/PlayQueuePanel.svelte';
+  import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
   import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
   import {
@@ -26,9 +26,9 @@
     audioLoading,
     seekAudio,
     setAudioVolume,
-  } from '@/stores/audioEngine';
-  import VolumeSlider from '@/components/VolumeSlider.svelte';
-  import ProgressSlider from '@/components/ProgressSlider.svelte';
+  } from '@/stores/playback/audioEngine';
+  import VolumeSlider from '@/components/player/VolumeSlider.svelte';
+  import ProgressSlider from '@/components/player/ProgressSlider.svelte';
 
   /** 仅打开详情页时切换沉浸式配色，单纯播放不变 */
   let barImmersive = $derived(player.viewMode === 'immersive');

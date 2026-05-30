@@ -1,4 +1,4 @@
-package music
+package persist
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	models "windmusic/internal/music"
+	"windmusic/music/appdata"
 )
 
 const recentPlayMaxItems = 200
@@ -76,7 +77,7 @@ func (s *RecentStore) ensurePathLocked() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
-	rootDir, err := AppDataRootDir()
+	rootDir, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

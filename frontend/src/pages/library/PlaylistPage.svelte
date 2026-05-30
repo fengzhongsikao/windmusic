@@ -5,8 +5,8 @@
   import { onMount } from 'svelte';
   import { push } from 'svelte-spa-router';
   import { ListMusic } from '@lucide/svelte';
-  import TrackList from '@/components/TrackList.svelte';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import TrackList from '@/components/track/TrackList.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import type { TrackItem } from '@/lib/track';
   import type { FavoriteSong } from '@/lib/wailsPlayer';
   import { favoriteSongKey } from '@/lib/wailsPlayer';
@@ -19,8 +19,8 @@
     type UserPlaylist,
   } from '@/lib/playlists';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
-  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
-  import { error as toastError } from '@/stores/toast';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
+  import { error as toastError } from '@/stores/ui/toast';
 
   interface Props {
     params?: Record<string, string | null> | null;

@@ -1,4 +1,4 @@
-package music
+package events
 
 const (
 	EventPlayerSettingsUpdated = "player-settings:updated"

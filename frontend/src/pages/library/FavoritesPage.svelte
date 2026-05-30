@@ -4,7 +4,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { Heart } from '@lucide/svelte';
-  import TrackList from '@/components/TrackList.svelte';
+  import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import {
     favoriteSongKey,
@@ -13,9 +13,9 @@
     removeTrackFavorite,
   } from '@/lib/wailsPlayer';
   import type { FavoriteSong } from '@/lib/wailsPlayer';
-  import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
-  import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
+  import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
 
   let loading = $state(false);
   let error = $state('');

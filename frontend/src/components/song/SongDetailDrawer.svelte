@@ -5,7 +5,7 @@
   import { fly } from 'svelte/transition';
   import { ChevronDown, Settings } from '@lucide/svelte';
   import SongDetail from '@/pages/song/SongDetail.svelte';
-  import { player, closeImmersiveView } from '@/stores/player.svelte';
+  import { player, closeImmersiveView } from '@/stores/playback/player.svelte';
   import { fetchCoverUrl } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
 

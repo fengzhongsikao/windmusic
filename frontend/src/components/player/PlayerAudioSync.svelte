@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { player } from '@/stores/player.svelte';
-  import { syncPlayerState } from '@/stores/audioEngine';
+  import { player } from '@/stores/playback/player.svelte';
+  import { syncPlayerState } from '@/stores/playback/audioEngine';
 
   $effect(() => {
     syncPlayerState(player.currentSong, player.isPlaying);

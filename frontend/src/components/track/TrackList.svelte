@@ -1,7 +1,7 @@
 <script lang="ts">
-  import TrackListRow from '@/components/TrackListRow.svelte';
+  import TrackListRow from '@/components/track/TrackListRow.svelte';
   import type { TrackItem } from '@/lib/track';
-  import type { PlayerTrack } from '@/stores/player.svelte';
+  import type { PlayerTrack } from '@/stores/playback/player.svelte';
 
   interface Props {
     tracks: TrackItem[];

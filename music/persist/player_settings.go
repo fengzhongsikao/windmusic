@@ -1,4 +1,4 @@
-package music
+package persist
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	models "windmusic/internal/music"
+	"windmusic/music/appdata"
 )
 
 type PlayerSettingsStore struct {
@@ -48,7 +49,7 @@ func (s *PlayerSettingsStore) settingsPath() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
-	root, err := AppDataRootDir()
+	root, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

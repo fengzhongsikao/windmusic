@@ -1,6 +1,6 @@
 import type { TrackItem } from '@/lib/track';
 import { createDefaultPlayerTrack } from '@/lib/defaultPlayerTrack';
-import { persistPlayerSettings } from '@/stores/playerSettings.svelte';
+import { persistPlayerSettings } from '@/stores/playback/playerSettings.svelte';
 
 export type ViewMode = 'normal' | 'immersive';
 

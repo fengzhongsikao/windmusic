@@ -11,11 +11,24 @@
 ## Repository Layout
 
 - `main.go` / `app.go`: Wails app entry and exported methods
-- `internal/`: Go domain logic (`sourcemgr`, runtime bridge, models)
+- `app_*.go`: Wails bindings split by domain (local library, user library, settings, sync)
+- `internal/`: Go domain logic (models, musicsearch)
+- `music/`: backend services
+  - `appdata/`: config directory helpers
+  - `events/`: Wails event name constants
+  - `persist/`: JSON persistence (favorites, recent, playlists, settings)
+  - `cache/`: in-memory caches (discover)
+  - `local/`: local folder library
+  - `meting/`: online source search and URLs
 - `frontend/`: Svelte 5 app
   - `src/pages/`: page-level UI
-  - `src/components/`: reusable UI components
-  - `src/stores/`: global state and audio engine
+  - `src/components/`: reusable UI (grouped: `layout/`, `player/`, `track/`, `playlist/`, `ui/`, `song/`)
+  - `src/stores/`: global state (grouped by domain)
+    - `playback/`: player queue, audio engine, lyrics, player settings
+    - `library/`: local library, favorites, recent, playlists
+    - `sources/`: Meting source settings
+    - `ui/`: toast notifications
+    - `sync/`: backend event subscription bootstrap
   - `wailsjs/`: generated Wails bindings (do not hand-edit)
 
 ## Frontend Tech Stack (from `frontend/package.json`)

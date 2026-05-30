@@ -1,4 +1,4 @@
-package music
+package persist
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	models "windmusic/internal/music"
+	"windmusic/music/appdata"
 )
 
 type FavoritesStore struct {
@@ -75,7 +76,7 @@ func (s *FavoritesStore) ensurePathLocked() (string, error) {
 	if s.path != "" {
 		return s.path, nil
 	}
-	rootDir, err := AppDataRootDir()
+	rootDir, err := appdata.AppDataRootDir()
 	if err != nil {
 		return "", err
 	}

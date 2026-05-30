@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createUserPlaylist, playlistCreateErrorMessage } from '@/lib/playlists';
-  import { error as toastError } from '@/stores/toast';
+  import { error as toastError } from '@/stores/ui/toast';
 
   interface Props {
     onCreated?: () => void;

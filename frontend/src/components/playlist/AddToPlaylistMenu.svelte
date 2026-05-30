@@ -4,7 +4,7 @@
 <script lang="ts">
   import { ListPlus, Music, CirclePlus } from '@lucide/svelte';
   import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
-  import PlaylistCreateFields from '@/components/PlaylistCreateFields.svelte';
+  import PlaylistCreateFields from '@/components/playlist/PlaylistCreateFields.svelte';
   import {
     addSongToPlaylist,
     fetchPlaylists,
@@ -14,8 +14,8 @@
     type UserPlaylist,
   } from '@/lib/playlists';
   import { toFavoriteSong } from '@/lib/wailsPlayer';
-  import type { PlayerTrack } from '@/stores/player.svelte';
-  import { success, error as toastError } from '@/stores/toast';
+  import type { PlayerTrack } from '@/stores/playback/player.svelte';
+  import { success, error as toastError } from '@/stores/ui/toast';
 
   interface Props {
     track: PlayerTrack;

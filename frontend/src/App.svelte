@@ -2,15 +2,15 @@
   import Router, { router } from 'svelte-spa-router';
   import Sidebar from '@/pages/layout/Sidebar.svelte';
   import PlayerBar from '@/pages/layout/PlayerBar.svelte';
-  import SearchBar from '@/components/SearchBar.svelte';
-  import PlayerAudioSync from '@/components/PlayerAudioSync.svelte';
-  import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
-  import ToastViewport from '@/components/ToastViewport.svelte';
+  import SearchBar from '@/components/layout/SearchBar.svelte';
+  import PlayerAudioSync from '@/components/player/PlayerAudioSync.svelte';
+  import SongDetailDrawer from '@/components/song/SongDetailDrawer.svelte';
+  import ToastViewport from '@/components/ui/ToastViewport.svelte';
   import LocalPage from '@/pages/library/LocalPage.svelte';
   import routes from '@/routes';
-  import { initAudioEngine } from '@/stores/audioEngine';
-  import '@/stores/appDataSync';
-  import { localLibrary, setLocalPageActive } from '@/stores/localLibrary.svelte';
+  import { initAudioEngine } from '@/stores/playback/audioEngine';
+  import '@/stores/sync/appDataSync';
+  import { localLibrary, setLocalPageActive } from '@/stores/library/localLibrary.svelte';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
