@@ -4,6 +4,10 @@
 
 前端使用 **Bun** 作为 JavaScript 运行时与包管理器（见 `wails.json` 中的 `frontend:install` / `frontend:build` 配置）。
 
+## 演示
+
+[B 站演示视频](https://www.bilibili.com/video/BV1L8V36bEFW/)
+
 ## 截图
 
 | 首页发现 | 本地音乐 | 最近播放 |
