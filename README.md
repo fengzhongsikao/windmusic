@@ -163,6 +163,28 @@ wails build
 
 产物为当前平台可执行文件。构建时 Wails 会先在前端目录执行 `bun install` 与 `bun run build` 生成 `frontend/dist`，再由 Go `embed` 打包进二进制。
 
+## 发布（GitHub Releases）
+
+修改 `wails.json` 中的 `info.productVersion` 并推送到 `main` 分支后，GitHub Actions 会自动检测版本变更、在 macOS / Windows / Linux 上构建，并创建对应 Release。
+
+```bash
+# 1. 编辑 wails.json → info.productVersion（例如 1.0.5）
+# 2. 提交并推送
+git add wails.json
+git commit -m "chore: release v1.0.5"
+git push origin main
+```
+
+仅当 `productVersion` **相对上一提交发生变化** 时才会打包；若只改了 `wails.json` 的其他字段（如 author），不会触发发布。
+
+| 平台 | 产物 |
+|------|------|
+| macOS (Universal) | `windmusic-v{version}-macos-universal.zip` |
+| Windows (amd64) | `windmusic-amd64-installer.exe`（NSIS 安装包） |
+| Linux (amd64) | `windmusic-v{version}-linux-amd64.tar.gz` |
+
+Release 标签为 `v{productVersion}`（如 `v1.0.5`）。也可在 GitHub **Actions → Release → Run workflow** 手动触发，版本号读取当前 `wails.json`。
+
 ## 数据存储
 
 ### 应用数据目录（Go 读写）

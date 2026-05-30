@@ -9,5 +9,11 @@
   "author": {
     "name": "wind",
     "email": "boltjolt@qq.com"
+  },
+  "info": {
+    "productVersion": "1.0.0"
+  },
+  "preBuildHooks": {
+    "*/*": "bash ../../scripts/sync-app-icon.sh"
   }
 }

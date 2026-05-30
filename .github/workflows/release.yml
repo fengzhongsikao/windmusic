@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - wails.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: windmusic
+  WAILS_VERSION: v2.12.0
+  GO_VERSION: '1.23'
+  NODE_OPTIONS: '--max-old-space-size=4096'
+
+jobs:
+  check-version:
+    name: Check productVersion
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect productVersion change
+        id: version
+        shell: bash
+        run: |
+          CURRENT=$(jq -r '.info.productVersion // empty' wails.json)
+          PREVIOUS=$(git show HEAD~1:wails.json 2>/dev/null | jq -r '.info.productVersion // empty' || true)
+
+          if [ -z "$CURRENT" ]; then
+            echo "wails.json info.productVersion is missing or empty"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "version=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual run — release v$CURRENT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$CURRENT" != "$PREVIOUS" ]; then
+            echo "productVersion changed: $PREVIOUS -> $CURRENT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "productVersion unchanged ($CURRENT), skip release"
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-latest
+            platform: linux/amd64
+            build_tags: webkit2_41
+            nsis: false
+          - name: windows-amd64
+            os: windows-latest
+            platform: windows/amd64
+            build_tags: ''
+            nsis: true
+          - name: macos-universal
+            os: macos-latest
+            platform: darwin/universal
+            build_tags: ''
+            nsis: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: go.sum
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgtk-3-dev \
+            libwebkit2gtk-4.1-dev \
+            pkg-config
+
+      - name: Install Wails CLI
+        shell: bash
+        run: |
+          go install github.com/wailsapp/wails/v2/cmd/wails@${{ env.WAILS_VERSION }}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Verify toolchain
+        shell: bash
+        run: |
+          go version
+          bun --version
+          wails version
+          echo "Building WindMusic v${{ needs.check-version.outputs.version }}"
+
+      - name: Build application
+        shell: bash
+        env:
+          CGO_ENABLED: 1
+        run: |
+          BUILD_FLAGS="-clean -platform ${{ matrix.platform }} -webview2 embed"
+          if [ -n "${{ matrix.build_tags }}" ]; then
+            BUILD_FLAGS="$BUILD_FLAGS -tags ${{ matrix.build_tags }}"
+          fi
+          if [ "${{ matrix.nsis }}" = "true" ]; then
+            BUILD_FLAGS="$BUILD_FLAGS -nsis"
+          fi
+          wails build $BUILD_FLAGS
+
+      - name: Package macOS build
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          cd build/bin
+          ditto -c -k --keepParent "${{ env.APP_NAME }}.app" "${{ env.APP_NAME }}-v${VERSION}-macos-universal.zip"
+          ls -la
+
+      - name: Package Linux build
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          cd build/bin
+          tar -czf "${{ env.APP_NAME }}-v${VERSION}-linux-amd64.tar.gz" "${{ env.APP_NAME }}"
+          ls -la
+
+      - name: List Windows build outputs
+        if: runner.os == 'Windows'
+        shell: bash
+        run: ls -la build/bin
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal
+          path: build/bin/${{ env.APP_NAME }}-v${{ needs.check-version.outputs.version }}-macos-universal.zip
+
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64
+          path: build/bin/${{ env.APP_NAME }}-v${{ needs.check-version.outputs.version }}-linux-amd64.tar.gz
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64
+          path: |
+            build/bin/${{ env.APP_NAME }}-amd64-installer.exe
+            build/bin/${{ env.APP_NAME }}.exe
+
+  release:
+    name: Publish GitHub Release
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List release files
+        run: find dist -type f | sort
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.check-version.outputs.version }}
+          name: WindMusic v${{ needs.check-version.outputs.version }}
+          generate_release_notes: true
+          files: dist/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
