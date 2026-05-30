@@ -39,17 +39,28 @@ func (a *App) localLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
 	if err != nil {
 		return models.LocalLibrarySnapshot{}, err
 	}
-	songs, err := a.local.ListCached()
-	if err != nil {
-		return models.LocalLibrarySnapshot{}, err
-	}
-	if songs == nil {
-		songs = []models.LocalSong{}
-	}
 	if folders == nil {
 		folders = []string{}
 	}
-	return models.LocalLibrarySnapshot{Folders: folders, Songs: songs}, nil
+	counts, err := a.local.FolderCounts()
+	if err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+	if counts == nil {
+		counts = map[string]int{}
+	}
+	aliases, err := a.local.ListFolderAliases()
+	if err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+	if aliases == nil {
+		aliases = map[string]string{}
+	}
+	return models.LocalLibrarySnapshot{
+		Folders:       folders,
+		FolderAliases: aliases,
+		FolderCounts:  counts,
+	}, nil
 }
 
 func (a *App) emitLocalLibrarySnapshot() {
@@ -77,7 +88,7 @@ func (a *App) bootstrapLocalLibrary() {
 	if err != nil {
 		return
 	}
-	if len(snapshot.Folders) == 0 || len(snapshot.Songs) > 0 {
+	if len(snapshot.Folders) == 0 || snapshot.FolderCounts[models.LocalAllTabID] > 0 {
 		return
 	}
 
@@ -243,8 +254,38 @@ func (a *App) RemoveLocalMusicFolder(folderPath string) error {
 	return a.scanAndEmitLocalLibrary()
 }
 
+func (a *App) SetLocalFolderAlias(folderPath, alias string) error {
+	if err := a.local.SetFolderAlias(folderPath, alias); err != nil {
+		return err
+	}
+	a.emitLocalLibrarySnapshot()
+	return nil
+}
+
 func (a *App) ListLocalLibrary() ([]models.LocalSong, error) {
 	return a.local.ListCached()
+}
+
+func (a *App) GetLocalFolderSongs(folderKey string) ([]models.LocalSong, error) {
+	songs, err := a.local.ListCachedForFolder(folderKey)
+	if err != nil {
+		return nil, err
+	}
+	if songs == nil {
+		return []models.LocalSong{}, nil
+	}
+	return songs, nil
+}
+
+func (a *App) GetLocalLibraryTracksIndex() (map[string][]models.LocalSong, error) {
+	index, err := a.local.AllFolderSongs()
+	if err != nil {
+		return nil, err
+	}
+	if index == nil {
+		return map[string][]models.LocalSong{}, nil
+	}
+	return index, nil
 }
 
 func (a *App) ScanLocalLibrary() ([]models.LocalSong, error) {

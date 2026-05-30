@@ -6,6 +6,8 @@ import { initPlaylistsSync } from '@/stores/playlistsStore.svelte';
 import { initRecentSync } from '@/stores/recent.svelte';
 import { clearLegacyClientStorage } from '@/lib/clearClientStorage';
 
+let stopSync: (() => void) | null = null;
+
 export function initAppDataSync(): () => void {
   const stops = [
     initLocalLibrarySync(),
@@ -24,3 +26,14 @@ export function initAppDataSync(): () => void {
     }
   };
 }
+
+/** 尽早拉取应用数据，避免等 App onMount 才订阅后端事件 */
+export function ensureAppDataSync(): () => void {
+  if (stopSync) {
+    return stopSync;
+  }
+  stopSync = initAppDataSync();
+  return stopSync;
+}
+
+ensureAppDataSync();

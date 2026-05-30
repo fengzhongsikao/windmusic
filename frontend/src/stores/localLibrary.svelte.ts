@@ -1,9 +1,9 @@
 import {
   fetchLocalSongCovers,
   GetLocalLibrarySnapshot,
+  GetLocalLibraryTracksIndex,
   ScanLocalLibrary,
   localSongToTrackItem,
-  songInFolder,
   type LocalSong,
 } from '@/lib/localMusic';
 import type { TrackItem } from '@/lib/track';
@@ -17,79 +17,267 @@ export const LOCAL_LIBRARY_SCANNING_EVENT = 'local-library:scanning';
 
 type LocalLibrarySnapshot = {
   folders: string[];
-  songs: LocalSong[];
+  folderAliases?: Record<string, string>;
+  folderCounts?: Record<string, number>;
 };
 
-let coverLoadToken = 0;
-let coverPreloadStarted = false;
-let lastSongPathsKey = '';
+let lastMetaKey = '';
 let syncInitialized = false;
+let tracksIndexToken = 0;
+let coverLoadToken = 0;
+let pendingCoverUpdates: Record<string, string> = {};
+let coverFlushScheduled = false;
+let localPageActive = false;
+let activeTabId = LOCAL_ALL_TAB_ID;
+
+const COVER_CHUNK = 40;
+const COVER_FLUSH_PER_FRAME = 12;
+
+function flushCoverUpdates() {
+  coverFlushScheduled = false;
+  const entries = Object.entries(pendingCoverUpdates);
+  if (entries.length === 0) {
+    return;
+  }
+
+  pendingCoverUpdates = {};
+  const slice = entries.slice(0, COVER_FLUSH_PER_FRAME);
+  for (const [path, cover] of slice) {
+    localLibrary.coverByPath[path] = cover;
+  }
+
+  if (entries.length > COVER_FLUSH_PER_FRAME) {
+    for (let i = COVER_FLUSH_PER_FRAME; i < entries.length; i += 1) {
+      pendingCoverUpdates[entries[i][0]] = entries[i][1];
+    }
+    scheduleCoverFlush();
+  }
+}
+
+function scheduleCoverFlush() {
+  if (coverFlushScheduled) {
+    return;
+  }
+  coverFlushScheduled = true;
+  requestAnimationFrame(flushCoverUpdates);
+}
+
+function collectUniqueLibraryPaths(): string[] {
+  const paths = new Set<string>();
+  for (const tracks of Object.values(localLibrary.tracksByTab)) {
+    for (const track of tracks) {
+      const path = String(track.listKey ?? track.id).trim();
+      if (path) {
+        paths.add(path);
+      }
+    }
+  }
+  return [...paths];
+}
+
+async function loadCoversForPaths(paths: string[]): Promise<void> {
+  const pending = paths.filter(
+    (path) => path && !localLibrary.coverByPath[path] && !pendingCoverUpdates[path],
+  );
+  if (pending.length === 0) {
+    return;
+  }
+
+  const token = coverLoadToken;
+  const batch = await fetchLocalSongCovers(pending);
+  if (token !== coverLoadToken) {
+    return;
+  }
+
+  let added = 0;
+  for (const [path, key] of Object.entries(batch.paths)) {
+    const cover = batch.covers[key];
+    if (cover && !localLibrary.coverByPath[path] && !pendingCoverUpdates[path]) {
+      pendingCoverUpdates[path] = cover;
+      added += 1;
+    }
+  }
+  if (added > 0) {
+    scheduleCoverFlush();
+  }
+}
+
+function yieldToMain(): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+/** 曲目索引就绪后，在空闲时把封面批量写入 store（内存缓存，切 Tab 不重拉） */
+function scheduleCoverPreloadAll() {
+  const paths = collectUniqueLibraryPaths();
+  if (paths.length === 0) {
+    return;
+  }
+
+  const token = ++coverLoadToken;
+  const run = async () => {
+    for (let i = 0; i < paths.length; i += COVER_CHUNK) {
+      if (coverLoadToken !== token) {
+        return;
+      }
+      await loadCoversForPaths(paths.slice(i, i + COVER_CHUNK));
+      await yieldToMain();
+    }
+  };
+
+  const start = () => void run();
+  // 曲目列表先稳定，再在空闲时灌封面，避免和 Tab 点击抢主线程
+  setTimeout(() => {
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(start, { timeout: 4000 });
+    } else {
+      start();
+    }
+  }, 600);
+}
+
+function clearCoverCache() {
+  coverLoadToken += 1;
+  pendingCoverUpdates = {};
+  coverFlushScheduled = false;
+  localLibrary.coverByPath = {};
+}
 
 export const localLibrary = $state({
   folders: [] as string[],
-  songs: [] as LocalSong[],
+  folderAliases: {} as Record<string, string>,
   folderCounts: {} as Record<string, number>,
   tracksByTab: {} as Record<string, TrackItem[]>,
+  songById: new Map<string, LocalSong>(),
+  tracksIndexReady: false,
+  tracksIndexLoading: false,
   coverByPath: {} as Record<string, string>,
+  revision: 0,
   loading: false,
   scanning: false,
   loaded: false,
 });
 
-function rebuildLibraryIndex(songs: LocalSong[], folders: string[]) {
-  const folderCounts: Record<string, number> = { [LOCAL_ALL_TAB_ID]: songs.length };
-  const tracksByTab: Record<string, TrackItem[]> = {
-    [LOCAL_ALL_TAB_ID]: songs.map((song) => localSongToTrackItem(song)),
-  };
-
-  for (const folder of folders) {
-    const folderSongs: LocalSong[] = [];
-    for (const song of songs) {
-      if (songInFolder(song.filePath, folder)) {
-        folderSongs.push(song);
-      }
-    }
-    folderCounts[folder] = folderSongs.length;
-    tracksByTab[folder] = folderSongs.map((song) => localSongToTrackItem(song));
+export function setLocalPageActive(active: boolean): void {
+  localPageActive = active;
+  if (active && localLibrary.loaded && !localLibrary.tracksIndexReady) {
+    void loadTracksIndex();
   }
-
-  localLibrary.folderCounts = folderCounts;
-  localLibrary.tracksByTab = tracksByTab;
 }
 
-export function clearLocalCoverCache() {
-  coverLoadToken += 1;
-  coverPreloadStarted = false;
-  localLibrary.coverByPath = {};
+export function setLocalActiveFolderTab(tabId: string): void {
+  activeTabId = tabId;
+}
+
+function snapshotMetaKey(snapshot: LocalLibrarySnapshot): string {
+  const foldersKey = snapshot.folders.join('\0');
+  const counts = snapshot.folderCounts ?? {};
+  const countKeys = Object.keys(counts).sort();
+  let countsPart = '';
+  for (const key of countKeys) {
+    countsPart += `${key}\x01${counts[key]}\x02`;
+  }
+  return `${foldersKey}\x00${countsPart}`;
+}
+
+function buildTracksFromSongs(songs: LocalSong[]): TrackItem[] {
+  const tracks: TrackItem[] = [];
+  const trackByPath = new Map<string, TrackItem>();
+
+  for (const song of songs) {
+    localLibrary.songById.set(String(song.id), song);
+    let item = trackByPath.get(song.filePath);
+    if (!item) {
+      item = localSongToTrackItem(song);
+      trackByPath.set(song.filePath, item);
+    }
+    tracks.push(item);
+  }
+
+  return tracks;
+}
+
+function applyTracksIndex(index: Record<string, LocalSong[]>) {
+  const tracksByTab: Record<string, TrackItem[]> = {};
+  localLibrary.songById = new Map();
+
+  for (const [tabId, songs] of Object.entries(index)) {
+    tracksByTab[tabId] = buildTracksFromSongs(songs ?? []);
+  }
+
+  localLibrary.tracksByTab = tracksByTab;
+  localLibrary.tracksIndexReady = true;
+  localLibrary.revision += 1;
+}
+
+function invalidateTracksIndex() {
+  tracksIndexToken += 1;
+  localLibrary.tracksByTab = {};
+  localLibrary.songById = new Map();
+  localLibrary.tracksIndexReady = false;
+  localLibrary.revision += 1;
 }
 
 function normalizeSnapshot(raw: music.LocalLibrarySnapshot | LocalLibrarySnapshot): LocalLibrarySnapshot {
   return {
     folders: raw.folders ?? [],
-    songs: (raw.songs ?? []) as LocalSong[],
+    folderAliases: raw.folderAliases ?? {},
+    folderCounts: raw.folderCounts ?? {},
   };
 }
 
 function applySnapshot(snapshot: LocalLibrarySnapshot) {
-  const pathsKey = snapshot.songs
-    .map((song) => song.filePath)
-    .sort()
-    .join('\0');
-  if (pathsKey !== lastSongPathsKey) {
-    if (lastSongPathsKey !== '') {
-      clearLocalCoverCache();
+  const metaKey = snapshotMetaKey(snapshot);
+  if (metaKey !== lastMetaKey) {
+    if (lastMetaKey !== '') {
+      clearCoverCache();
+      invalidateTracksIndex();
     }
-    lastSongPathsKey = pathsKey;
-    scheduleCoverPreload(snapshot.songs.map((song) => song.filePath));
+    lastMetaKey = metaKey;
   }
 
   localLibrary.folders = snapshot.folders;
-  localLibrary.songs = snapshot.songs;
-  rebuildLibraryIndex(snapshot.songs, snapshot.folders);
+  localLibrary.folderAliases = snapshot.folderAliases ?? {};
+  localLibrary.folderCounts = snapshot.folderCounts ?? {};
   localLibrary.loaded = true;
+
+  if (localPageActive) {
+    void loadTracksIndex();
+  }
 }
 
-/** 订阅后端推送；启动时拉一次快照，避免错过 startup 事件 */
+/** 一次 IPC 拉取后端按文件夹分好的曲目索引（与扫描结构一致） */
+export async function loadTracksIndex(): Promise<void> {
+  if (localLibrary.tracksIndexLoading) {
+    return;
+  }
+  if (localLibrary.tracksIndexReady && Object.keys(localLibrary.tracksByTab).length > 0) {
+    return;
+  }
+
+  const token = tracksIndexToken + 1;
+  tracksIndexToken = token;
+  localLibrary.tracksIndexLoading = true;
+
+  try {
+    const index = (await GetLocalLibraryTracksIndex()) as Record<string, LocalSong[]>;
+    if (tracksIndexToken !== token) {
+      return;
+    }
+    applyTracksIndex(index ?? {});
+    scheduleCoverPreloadAll();
+  } catch {
+    if (tracksIndexToken === token) {
+      invalidateTracksIndex();
+    }
+  } finally {
+    if (tracksIndexToken === token) {
+      localLibrary.tracksIndexLoading = false;
+    }
+  }
+}
+
 export function initLocalLibrarySync(): () => void {
   if (syncInitialized) {
     return () => {};
@@ -120,72 +308,6 @@ export function initLocalLibrarySync(): () => void {
   };
 }
 
-/** 手动全盘扫描（后端扫描完成后通过事件更新状态） */
 export async function scanLocalLibrary(): Promise<void> {
   await ScanLocalLibrary();
-}
-
-/** 后台批量加载封面（只读 extras 缓存，不扫盘） */
-export async function loadLocalCoversForPaths(paths: string[]): Promise<void> {
-  const pending = paths.filter((path) => path && !localLibrary.coverByPath[path]);
-  if (pending.length === 0) {
-    return;
-  }
-
-  const token = coverLoadToken;
-  const batch = await fetchLocalSongCovers(pending);
-  if (token !== coverLoadToken) {
-    return;
-  }
-
-  const next = { ...localLibrary.coverByPath };
-  let added = 0;
-  for (const [path, key] of Object.entries(batch.paths)) {
-    const cover = batch.covers[key];
-    if (cover && !next[path]) {
-      next[path] = cover;
-      added += 1;
-    }
-  }
-  if (added > 0) {
-    localLibrary.coverByPath = next;
-  }
-}
-
-const COVER_PRELOAD_CHUNK = 120;
-
-/** 库加载后空闲时分批预取全部封面，避免切换 Tab 时再触发加载 */
-export function scheduleCoverPreload(paths: string[]): void {
-  if (coverPreloadStarted) {
-    return;
-  }
-  const unique = [...new Set(paths.map((path) => path.trim()).filter(Boolean))];
-  if (unique.length === 0) {
-    return;
-  }
-  coverPreloadStarted = true;
-  const tokenAtStart = coverLoadToken;
-
-  const run = async () => {
-    for (let i = 0; i < unique.length; i += COVER_PRELOAD_CHUNK) {
-      if (coverLoadToken !== tokenAtStart) {
-        return;
-      }
-      await loadLocalCoversForPaths(unique.slice(i, i + COVER_PRELOAD_CHUNK));
-      await yieldToMain();
-    }
-  };
-
-  const start = () => void run();
-  if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(start, { timeout: 2000 });
-  } else {
-    setTimeout(start, 50);
-  }
-}
-
-function yieldToMain(): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, 0);
-  });
 }

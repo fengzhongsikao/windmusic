@@ -1,18 +1,22 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import Router from 'svelte-spa-router';
+  import Router, { router } from 'svelte-spa-router';
   import Sidebar from '@/pages/layout/Sidebar.svelte';
   import PlayerBar from '@/pages/layout/PlayerBar.svelte';
   import SearchBar from '@/components/SearchBar.svelte';
   import PlayerAudioSync from '@/components/PlayerAudioSync.svelte';
   import SongDetailDrawer from '@/components/SongDetailDrawer.svelte';
   import ToastViewport from '@/components/ToastViewport.svelte';
+  import LocalPage from '@/pages/library/LocalPage.svelte';
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/audioEngine';
-  import { initAppDataSync } from '@/stores/appDataSync';
+  import '@/stores/appDataSync';
+  import { localLibrary, setLocalPageActive } from '@/stores/localLibrary.svelte';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
+  let localPageMounted = $state(false);
+
+  const isLocalRoute = $derived(router.location === '/local');
 
   $effect(() => {
     if (audioEl && audioRoot) {
@@ -20,7 +24,15 @@
     }
   });
 
-  onMount(() => initAppDataSync());
+  $effect(() => {
+    if (localLibrary.loaded || isLocalRoute) {
+      localPageMounted = true;
+    }
+  });
+
+  $effect(() => {
+    setLocalPageActive(isLocalRoute);
+  });
 </script>
 
 <PlayerAudioSync />
@@ -35,7 +47,14 @@
         <SearchBar />
       </div>
       <div class="main-routes">
-        <Router {routes} />
+        <div class="route-layer" class:route-hidden={isLocalRoute}>
+          <Router {routes} />
+        </div>
+        {#if localPageMounted}
+          <div class="route-layer" class:route-hidden={!isLocalRoute}>
+            <LocalPage />
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -94,6 +113,15 @@
     flex: 1;
     overflow-y: auto;
     padding: 16px 32px 24px;
+    position: relative;
+  }
+
+  .route-layer {
+    min-height: 100%;
+  }
+
+  .route-layer.route-hidden {
+    display: none;
   }
 
   .app-footer {

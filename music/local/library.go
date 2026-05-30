@@ -34,10 +34,66 @@ var audioExtensions = map[string]struct{}{
 
 type LocalLibraryStore struct {
 	mu sync.RWMutex
+
+	folderSongsByKey    map[string][]models.LocalSong
+	folderSongsIndexValid bool
+}
+
+func (s *LocalLibraryStore) invalidateFolderSongsIndex() {
+	s.folderSongsIndexValid = false
+	s.folderSongsByKey = nil
+}
+
+func (s *LocalLibraryStore) ensureFolderSongsIndexLocked(folders []string, cache *localScanCacheFile) {
+	if s.folderSongsIndexValid {
+		return
+	}
+	byKey := make(map[string][]models.LocalSong, len(folders)+1)
+	byKey[models.LocalAllTabID] = make([]models.LocalSong, 0)
+	for _, folder := range folders {
+		byKey[folder] = make([]models.LocalSong, 0)
+	}
+	for path, entry := range cache.Entries {
+		if !fileInMusicFolders(path, folders) {
+			continue
+		}
+		byKey[models.LocalAllTabID] = append(byKey[models.LocalAllTabID], entry.Song)
+		for _, folder := range foldersMatchingFile(path, folders) {
+			byKey[folder] = append(byKey[folder], entry.Song)
+		}
+	}
+	for key := range byKey {
+		sortLocalSongs(byKey[key])
+	}
+	s.folderSongsByKey = byKey
+	s.folderSongsIndexValid = true
 }
 
 type localFoldersFile struct {
-	Paths []string `json:"paths"`
+	Paths   []string          `json:"paths"`
+	Aliases map[string]string `json:"aliases,omitempty"`
+}
+
+func (f *localFoldersFile) ensureMaps() {
+	if f.Aliases == nil {
+		f.Aliases = make(map[string]string)
+	}
+}
+
+func pruneFolderAliases(file *localFoldersFile) {
+	file.ensureMaps()
+	if len(file.Aliases) == 0 {
+		return
+	}
+	inPaths := make(map[string]struct{}, len(file.Paths))
+	for _, p := range file.Paths {
+		inPaths[p] = struct{}{}
+	}
+	for path := range file.Aliases {
+		if _, ok := inPaths[path]; !ok {
+			delete(file.Aliases, path)
+		}
+	}
 }
 
 type localScanCacheEntry struct {
@@ -139,29 +195,32 @@ func migrateLegacyCache(cache *localScanCacheFile, extras *localExtrasFile) {
 	}
 }
 
-func (s *LocalLibraryStore) readFoldersLocked() ([]string, error) {
+func (s *LocalLibraryStore) readFoldersFileLocked() (localFoldersFile, error) {
 	path, err := s.foldersPath()
 	if err != nil {
-		return nil, err
+		return localFoldersFile{}, err
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []string{}, nil
+			return localFoldersFile{Paths: []string{}}, nil
 		}
-		return nil, err
+		return localFoldersFile{}, err
 	}
 	if len(data) == 0 {
-		return []string{}, nil
+		return localFoldersFile{Paths: []string{}}, nil
 	}
 	var payload localFoldersFile
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return nil, err
+		return localFoldersFile{}, err
 	}
-	return normalizeFolderPaths(payload.Paths), nil
+	payload.Paths = normalizeFolderPaths(payload.Paths)
+	payload.ensureMaps()
+	pruneFolderAliases(&payload)
+	return payload, nil
 }
 
-func (s *LocalLibraryStore) writeFoldersLocked(paths []string) error {
+func (s *LocalLibraryStore) writeFoldersFileLocked(file localFoldersFile) error {
 	path, err := s.foldersPath()
 	if err != nil {
 		return err
@@ -169,12 +228,36 @@ func (s *LocalLibraryStore) writeFoldersLocked(paths []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	payload, err := json.MarshalIndent(localFoldersFile{Paths: normalizeFolderPaths(paths)}, "", "  ")
+	file.Paths = normalizeFolderPaths(file.Paths)
+	file.ensureMaps()
+	pruneFolderAliases(&file)
+	payload, err := json.MarshalIndent(file, "", "  ")
 	if err != nil {
 		return err
 	}
 	payload = append(payload, '\n')
-	return os.WriteFile(path, payload, 0o644)
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		return err
+	}
+	s.invalidateFolderSongsIndex()
+	return nil
+}
+
+func (s *LocalLibraryStore) readFoldersLocked() ([]string, error) {
+	file, err := s.readFoldersFileLocked()
+	if err != nil {
+		return nil, err
+	}
+	return file.Paths, nil
+}
+
+func (s *LocalLibraryStore) writeFoldersLocked(paths []string) error {
+	file, err := s.readFoldersFileLocked()
+	if err != nil {
+		return err
+	}
+	file.Paths = paths
+	return s.writeFoldersFileLocked(file)
 }
 
 func normalizeFolderPaths(paths []string) []string {
@@ -266,13 +349,76 @@ func (s *LocalLibraryStore) writeCacheLocked(cache *localScanCacheFile) error {
 		return err
 	}
 	payload = append(payload, '\n')
-	return os.WriteFile(path, payload, 0o644)
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
+		return err
+	}
+	s.invalidateFolderSongsIndex()
+	return nil
 }
 
 func (s *LocalLibraryStore) ListFolders() ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.readFoldersLocked()
+}
+
+func (s *LocalLibraryStore) ListFolderAliases() (map[string]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	file, err := s.readFoldersFileLocked()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(file.Aliases))
+	for path, alias := range file.Aliases {
+		trimmed := strings.TrimSpace(alias)
+		if trimmed != "" {
+			out[path] = trimmed
+		}
+	}
+	return out, nil
+}
+
+const maxLocalFolderAliasLen = 80
+
+func (s *LocalLibraryStore) SetFolderAlias(folderPath, alias string) error {
+	folderPath = strings.TrimSpace(folderPath)
+	if folderPath == "" {
+		return fmt.Errorf("folder path is empty")
+	}
+	alias = strings.TrimSpace(alias)
+	if len(alias) > maxLocalFolderAliasLen {
+		return fmt.Errorf("alias is too long (max %d characters)", maxLocalFolderAliasLen)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	file, err := s.readFoldersFileLocked()
+	if err != nil {
+		return err
+	}
+	target, err := filepath.Abs(folderPath)
+	if err != nil {
+		target = folderPath
+	}
+	found := false
+	for _, folder := range file.Paths {
+		if folder == target {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return fmt.Errorf("folder not found")
+	}
+	file.ensureMaps()
+	if alias == "" {
+		delete(file.Aliases, target)
+	} else {
+		file.Aliases[target] = alias
+	}
+	return s.writeFoldersFileLocked(file)
 }
 
 func (s *LocalLibraryStore) AddFolder(folderPath string) error {
@@ -472,15 +618,7 @@ func (s *LocalLibraryStore) Scan() ([]models.LocalSong, error) {
 		return nil, err
 	}
 
-	sort.Slice(allSongs, func(i, j int) bool {
-		left := strings.ToLower(allSongs[i].Title)
-		right := strings.ToLower(allSongs[j].Title)
-		if left == right {
-			return allSongs[i].FilePath < allSongs[j].FilePath
-		}
-		return left < right
-	})
-
+	sortLocalSongs(allSongs)
 	return allSongs, nil
 }
 
@@ -510,6 +648,34 @@ func (s *LocalLibraryStore) ListCached() ([]models.LocalSong, error) {
 		songs = append(songs, entry.Song)
 	}
 
+	sortLocalSongs(songs)
+	return songs, nil
+}
+
+func fileInFolder(filePath, folder string) bool {
+	abs, err := filepath.Abs(filePath)
+	if err != nil {
+		abs = filePath
+	}
+	folderAbs, err := filepath.Abs(folder)
+	if err != nil {
+		folderAbs = folder
+	}
+	prefix := folderAbs + string(os.PathSeparator)
+	return abs == folderAbs || strings.HasPrefix(abs, prefix)
+}
+
+func foldersMatchingFile(filePath string, folders []string) []string {
+	matched := make([]string, 0, 1)
+	for _, folder := range folders {
+		if fileInFolder(filePath, folder) {
+			matched = append(matched, folder)
+		}
+	}
+	return matched
+}
+
+func sortLocalSongs(songs []models.LocalSong) {
 	sort.Slice(songs, func(i, j int) bool {
 		left := strings.ToLower(songs[i].Title)
 		right := strings.ToLower(songs[j].Title)
@@ -518,8 +684,96 @@ func (s *LocalLibraryStore) ListCached() ([]models.LocalSong, error) {
 		}
 		return left < right
 	})
+}
 
-	return songs, nil
+// FolderCounts returns song counts per folder tab (including LocalAllTabID).
+func (s *LocalLibraryStore) FolderCounts() (map[string]int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	folders, err := s.readFoldersLocked()
+	if err != nil {
+		return nil, err
+	}
+	if len(folders) == 0 {
+		return map[string]int{models.LocalAllTabID: 0}, nil
+	}
+
+	cache, err := s.readCacheLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	s.ensureFolderSongsIndexLocked(folders, cache)
+	counts := make(map[string]int, len(s.folderSongsByKey))
+	for key, songs := range s.folderSongsByKey {
+		counts[key] = len(songs)
+	}
+	return counts, nil
+}
+
+func cloneLocalSongForList(song models.LocalSong) models.LocalSong {
+	song.CoverData = ""
+	song.Lyric = ""
+	return song
+}
+
+// AllFolderSongs returns a copy of the in-memory per-tab song index (built from scan cache).
+func (s *LocalLibraryStore) AllFolderSongs() (map[string][]models.LocalSong, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	folders, err := s.readFoldersLocked()
+	if err != nil {
+		return nil, err
+	}
+	if len(folders) == 0 {
+		return map[string][]models.LocalSong{models.LocalAllTabID: {}}, nil
+	}
+
+	cache, err := s.readCacheLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	s.ensureFolderSongsIndexLocked(folders, cache)
+	out := make(map[string][]models.LocalSong, len(s.folderSongsByKey))
+	for key, songs := range s.folderSongsByKey {
+		cloned := make([]models.LocalSong, len(songs))
+		for i, song := range songs {
+			cloned[i] = cloneLocalSongForList(song)
+		}
+		out[key] = cloned
+	}
+	return out, nil
+}
+
+// ListCachedForFolder returns cached songs for one tab (models.LocalAllTabID = all folders).
+func (s *LocalLibraryStore) ListCachedForFolder(folderKey string) ([]models.LocalSong, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	folders, err := s.readFoldersLocked()
+	if err != nil {
+		return nil, err
+	}
+	if len(folders) == 0 {
+		return []models.LocalSong{}, nil
+	}
+
+	cache, err := s.readCacheLocked()
+	if err != nil {
+		return nil, err
+	}
+
+	s.ensureFolderSongsIndexLocked(folders, cache)
+	songs := s.folderSongsByKey[folderKey]
+	if len(songs) == 0 {
+		return []models.LocalSong{}, nil
+	}
+	out := make([]models.LocalSong, len(songs))
+	copy(out, songs)
+	return out, nil
 }
 
 func fileInMusicFolders(filePath string, folders []string) bool {

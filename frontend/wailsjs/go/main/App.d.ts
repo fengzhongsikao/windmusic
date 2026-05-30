@@ -18,7 +18,11 @@ export function GetDiscoverRecommendCache(arg1:string):Promise<music.DiscoverRec
 
 export function GetLocalAudioStream(arg1:string):Promise<string>;
 
+export function GetLocalFolderSongs(arg1:string):Promise<Array<music.LocalSong>>;
+
 export function GetLocalLibrarySnapshot():Promise<music.LocalLibrarySnapshot>;
+
+export function GetLocalLibraryTracksIndex():Promise<Record<string, Array<music.LocalSong>>>;
 
 export function GetLocalSongCovers(arg1:Array<string>):Promise<music.LocalCoverBatch>;
 
@@ -71,6 +75,8 @@ export function Search(arg1:string,arg2:string,arg3:string,arg4:number):Promise<
 export function SetActiveMetingURL(arg1:string):Promise<void>;
 
 export function SetDiscoverRecommendCache(arg1:string,arg2:Array<music.SongItem>):Promise<void>;
+
+export function SetLocalFolderAlias(arg1:string,arg2:string):Promise<void>;
 
 export function SetMetingPlatform(arg1:string):Promise<void>;
 

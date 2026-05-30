@@ -123,10 +123,15 @@ type LocalCoverBatch struct {
 	Paths  map[string]string `json:"paths"`
 }
 
-// LocalLibrarySnapshot is the full local library view pushed to the frontend.
+// LocalAllTabID is the frontend tab key for the combined library view.
+const LocalAllTabID = "all"
+
+// LocalLibrarySnapshot is lightweight library metadata pushed to the frontend.
+// Per-folder song lists are loaded on demand via GetLocalFolderSongs.
 type LocalLibrarySnapshot struct {
-	Folders []string  `json:"folders"`
-	Songs   []LocalSong `json:"songs"`
+	Folders       []string          `json:"folders"`
+	FolderAliases map[string]string `json:"folderAliases,omitempty"`
+	FolderCounts  map[string]int    `json:"folderCounts"`
 }
 
 // PlayerSettings holds persisted playback UI preferences.

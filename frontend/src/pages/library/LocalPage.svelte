@@ -2,29 +2,39 @@
   本地音乐：文件夹管理、扫描曲目、按文件夹 Tab 筛选、点击播放。
 -->
 <script lang="ts">
-  import { Folder, FolderOpen, LoaderCircle, RefreshCw, Trash2 } from '@lucide/svelte';
-  import TrackList from '@/components/TrackList.svelte';
+  import { Check, Folder, FolderOpen, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/svelte';
   import PlayAllButton from '@/components/PlayAllButton.svelte';
+  import LocalFolderTrackPanel from '@/pages/library/LocalFolderTrackPanel.svelte';
   import type { TrackItem } from '@/lib/track';
   import {
-    folderDisplayName,
+    folderDisplayLabel,
     localSongToPlayerTrack,
-    localSongToTrackItem,
     PickLocalMusicFolder,
     RemoveLocalMusicFolder,
-    type LocalSong,
+    SetLocalFolderAlias,
   } from '@/lib/localMusic';
-  import { LOCAL_ALL_TAB_ID, localLibrary, scanLocalLibrary } from '@/stores/localLibrary.svelte';
+  import {
+    LOCAL_ALL_TAB_ID,
+    loadTracksIndex,
+    localLibrary,
+    scanLocalLibrary,
+    setLocalActiveFolderTab,
+  } from '@/stores/localLibrary.svelte';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/player.svelte';
   import { audioLoading } from '@/stores/audioEngine';
   import { error as toastError } from '@/stores/toast';
 
   let pageError = $state('');
   let removingPath = $state('');
+  let renamingPath = $state('');
+  let renameDraft = $state('');
+  let savingAlias = $state(false);
   let activeFolderTab = $state(LOCAL_ALL_TAB_ID);
 
+  const folderAliases = $derived(localLibrary.folderAliases);
+  const tracksIndexLoading = $derived(localLibrary.tracksIndexLoading);
+
   const folders = $derived(localLibrary.folders);
-  const songs = $derived(localLibrary.songs as LocalSong[]);
   const scanning = $derived(localLibrary.scanning);
   const loading = $derived(localLibrary.loading);
 
@@ -36,16 +46,29 @@
     for (const folder of folders) {
       tabs.push({
         id: folder,
-        label: folderDisplayName(folder),
+        label: folderDisplayLabel(folder, folderAliases),
         count: counts[folder] ?? 0,
       });
     }
     return tabs;
   });
 
-  const tracks = $derived(localLibrary.tracksByTab[activeFolderTab] ?? []);
-  const currentSongId = $derived(player.currentSong.id);
+  const activeTracks = $derived(localLibrary.tracksByTab[activeFolderTab] ?? []);
   const isLoadingAudio = $derived($audioLoading);
+
+  $effect(() => {
+    if (localLibrary.loaded) {
+      void loadTracksIndex();
+    }
+  });
+
+  function selectFolderTab(tabId: string) {
+    if (activeFolderTab === tabId) {
+      return;
+    }
+    activeFolderTab = tabId;
+    setLocalActiveFolderTab(tabId);
+  }
 
   function songCountForFolder(folderPath: string): number {
     return localLibrary.folderCounts[folderPath] ?? 0;
@@ -77,6 +100,52 @@
     }
   }
 
+  function startRenameFolder(folderPath: string) {
+    if (scanning || savingAlias) {
+      return;
+    }
+    renamingPath = folderPath;
+    renameDraft = folderDisplayLabel(folderPath, folderAliases);
+  }
+
+  function cancelRenameFolder() {
+    renamingPath = '';
+    renameDraft = '';
+  }
+
+  async function commitRenameFolder(folderPath: string) {
+    if (savingAlias || renamingPath !== folderPath) {
+      return;
+    }
+    const next = renameDraft.trim();
+    const current = folderDisplayLabel(folderPath, folderAliases);
+    if (next === current) {
+      cancelRenameFolder();
+      return;
+    }
+    savingAlias = true;
+    pageError = '';
+    try {
+      await SetLocalFolderAlias(folderPath, next);
+      cancelRenameFolder();
+    } catch (err) {
+      pageError = err instanceof Error ? err.message : String(err);
+      toastError('保存文件夹名称失败');
+    } finally {
+      savingAlias = false;
+    }
+  }
+
+  function handleRenameKeydown(event: KeyboardEvent, folderPath: string) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void commitRenameFolder(folderPath);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelRenameFolder();
+    }
+  }
+
   async function handleRemoveFolder(folderPath: string) {
     if (removingPath) {
       return;
@@ -96,27 +165,37 @@
     }
   }
 
-  function resolvePlayerTrack(track: TrackItem) {
-    const song = songs.find((item) => String(item.id) === String(track.id));
+  function handleSelect(track: TrackItem) {
+    const song = localLibrary.songById.get(String(track.id));
     if (!song) {
-      return {
+      togglePlayByTrack({
         id: track.id,
         title: track.title,
         artist: track.artist,
         album: track.album,
         duration: track.duration,
         coverUrl: track.coverUrl,
-      };
+      });
+      return;
     }
-    return localSongToPlayerTrack(song, localLibrary.coverByPath[song.filePath]);
-  }
-
-  function handleSelect(track: TrackItem) {
-    togglePlayByTrack(resolvePlayerTrack(track));
+    togglePlayByTrack(localSongToPlayerTrack(song, localLibrary.coverByPath[song.filePath]));
   }
 
   function handlePlayAll() {
-    const queue = tracks.map((track) => resolvePlayerTrack(track));
+    const queue = activeTracks.map((track) => {
+      const song = localLibrary.songById.get(String(track.id));
+      if (!song) {
+        return {
+          id: track.id,
+          title: track.title,
+          artist: track.artist,
+          album: track.album,
+          duration: track.duration,
+          coverUrl: track.coverUrl,
+        };
+      }
+      return localSongToPlayerTrack(song, localLibrary.coverByPath[song.filePath]);
+    });
     playAllTracks(queue);
   }
 
@@ -150,7 +229,7 @@
         <FolderOpen size={16} />
         添加文件夹
       </button>
-      {#if tracks.length > 0}
+      {#if activeTracks.length > 0}
         <PlayAllButton onclick={handlePlayAll} disabled={scanning} />
       {/if}
     </div>
@@ -170,18 +249,66 @@
           <div class="folder-card">
             <Folder size={28} />
             <div class="folder-info">
-              <div class="folder-name" title={folder}>{folderDisplayName(folder)}</div>
+              {#if renamingPath === folder}
+                <div class="folder-rename-row">
+                  <input
+                    type="text"
+                    class="folder-rename-input"
+                    bind:value={renameDraft}
+                    maxlength={80}
+                    aria-label="文件夹显示名称"
+                    disabled={savingAlias}
+                    onkeydown={(e) => handleRenameKeydown(e, folder)}
+                  />
+                  <button
+                    type="button"
+                    class="folder-action"
+                    title="保存名称"
+                    aria-label="保存名称"
+                    disabled={savingAlias}
+                    onclick={() => void commitRenameFolder(folder)}
+                  >
+                    <Check size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    class="folder-action"
+                    title="取消"
+                    aria-label="取消"
+                    disabled={savingAlias}
+                    onclick={cancelRenameFolder}
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              {:else}
+                <div class="folder-name" title={folder}>
+                  {folderDisplayLabel(folder, folderAliases)}
+                </div>
+              {/if}
               <div class="folder-meta">
                 <span class="folder-count">{songCountForFolder(folder)} 首</span>
                 <span class="folder-path" title={folder}>{folder}</span>
               </div>
             </div>
+            {#if renamingPath !== folder}
+              <button
+                type="button"
+                class="folder-action"
+                title="重命名显示名称"
+                aria-label="重命名显示名称"
+                disabled={removingPath === folder || scanning || savingAlias}
+                onclick={() => startRenameFolder(folder)}
+              >
+                <Pencil size={16} />
+              </button>
+            {/if}
             <button
               type="button"
               class="folder-remove"
               title="移除此文件夹"
               aria-label="移除此文件夹"
-              disabled={removingPath === folder || scanning}
+              disabled={removingPath === folder || scanning || renamingPath === folder}
               onclick={() => void handleRemoveFolder(folder)}
             >
               <Trash2 size={16} />
@@ -204,7 +331,7 @@
               class:active={activeFolderTab === tab.id}
               role="tab"
               aria-selected={activeFolderTab === tab.id}
-              onclick={() => (activeFolderTab = tab.id)}
+              onclick={() => selectFolderTab(tab.id)}
             >
               <span class="folder-tab-label">{tab.label}</span>
               <span class="folder-tab-count">{tab.count}</span>
@@ -214,27 +341,21 @@
       {/if}
     </div>
 
-    {#if (scanning || loading) && tracks.length === 0}
-      <p class="empty-hint">{scanning ? '正在扫描音乐文件…' : '正在加载…'}</p>
-    {:else if tracks.length === 0}
+    {#if (scanning || loading || tracksIndexLoading) && !localLibrary.tracksIndexReady}
       <p class="empty-hint">
-        {#if activeFolderTab === LOCAL_ALL_TAB_ID}
-          暂无本地歌曲，请先添加音乐文件夹，或点击「刷新」扫描。
-        {:else}
-          该文件夹下暂无歌曲。
-        {/if}
+        {scanning ? '正在扫描音乐文件…' : tracksIndexLoading ? '正在加载歌曲…' : '正在加载…'}
       </p>
     {:else}
-      <TrackList
-        {tracks}
-        showSize
-        coverByPath={localLibrary.coverByPath}
-        activeId={currentSongId}
-        isPlaying={player.isPlaying}
-        onSelect={handleSelect}
-        resolvePlayerTrack={resolvePlayerTrack}
-        ariaLabel="本地歌曲列表"
-      />
+      <div class="folder-track-panels">
+        {#each folderTabs as tab (tab.id)}
+          <LocalFolderTrackPanel
+            tabId={tab.id}
+            tabLabel={tab.label}
+            visible={activeFolderTab === tab.id}
+            onSelect={handleSelect}
+          />
+        {/each}
+      </div>
     {/if}
   </div>
 </div>
@@ -380,6 +501,51 @@
     text-overflow: ellipsis;
   }
 
+  .folder-rename-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .folder-rename-input {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #333;
+    border: 1px solid #c7d2fe;
+    border-radius: 6px;
+    padding: 4px 8px;
+    background: #fff;
+  }
+
+  .folder-rename-input:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+  }
+
+  .folder-action {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: #999;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+  }
+
+  .folder-action:hover:not(:disabled) {
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.08);
+  }
+
+  .folder-action:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   .folder-meta {
     margin-top: 4px;
     display: flex;
@@ -473,6 +639,11 @@
 
   .folder-tab.active .folder-tab-count {
     opacity: 0.95;
+  }
+
+  .folder-track-panels {
+    position: relative;
+    min-height: 120px;
   }
 
   .song-section :global(.track-list) {

@@ -34,8 +34,16 @@ export function GetLocalAudioStream(arg1) {
   return window['go']['main']['App']['GetLocalAudioStream'](arg1);
 }
 
+export function GetLocalFolderSongs(arg1) {
+  return window['go']['main']['App']['GetLocalFolderSongs'](arg1);
+}
+
 export function GetLocalLibrarySnapshot() {
   return window['go']['main']['App']['GetLocalLibrarySnapshot']();
+}
+
+export function GetLocalLibraryTracksIndex() {
+  return window['go']['main']['App']['GetLocalLibraryTracksIndex']();
 }
 
 export function GetLocalSongCovers(arg1) {
@@ -140,6 +148,10 @@ export function SetActiveMetingURL(arg1) {
 
 export function SetDiscoverRecommendCache(arg1, arg2) {
   return window['go']['main']['App']['SetDiscoverRecommendCache'](arg1, arg2);
+}
+
+export function SetLocalFolderAlias(arg1, arg2) {
+  return window['go']['main']['App']['SetLocalFolderAlias'](arg1, arg2);
 }
 
 export function SetMetingPlatform(arg1) {

@@ -1,11 +1,14 @@
 import {
   GetLocalAudioStream,
+  GetLocalFolderSongs,
   GetLocalLibrarySnapshot,
+  GetLocalLibraryTracksIndex,
   GetLocalSongCovers,
   GetLocalSongExtras,
   PickLocalMusicFolder,
   RemoveLocalMusicFolder,
   ScanLocalLibrary,
+  SetLocalFolderAlias,
 } from '../../wailsjs/go/main/App';
 import { music } from '../../wailsjs/go/models';
 import type { TrackItem } from '@/lib/track';
@@ -19,9 +22,12 @@ export const LOCAL_SOURCE_ID = 'local';
 
 export {
   PickLocalMusicFolder,
+  GetLocalFolderSongs,
   GetLocalLibrarySnapshot,
+  GetLocalLibraryTracksIndex,
   RemoveLocalMusicFolder,
   ScanLocalLibrary,
+  SetLocalFolderAlias,
   GetLocalAudioStream,
   GetLocalSongExtras,
 };
@@ -228,4 +234,12 @@ export function folderDisplayName(path: string): string {
   }
   const parts = trimmed.split(/[/\\]/).filter(Boolean);
   return parts[parts.length - 1] ?? trimmed;
+}
+
+export function folderDisplayLabel(path: string, aliases?: Record<string, string>): string {
+  const alias = aliases?.[path]?.trim();
+  if (alias) {
+    return alias;
+  }
+  return folderDisplayName(path);
 }
