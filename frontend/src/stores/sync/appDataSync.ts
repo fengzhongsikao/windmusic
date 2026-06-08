@@ -1,3 +1,4 @@
+import { waitForWailsBridge } from '@/lib/wailsBridge';
 import { initLocalLibrarySync } from '@/stores/library/localLibrary.svelte';
 import { initPlayerSettingsSync } from '@/stores/playback/playerSettings.svelte';
 import { initMetingSync } from '@/stores/sources/meting.svelte';
@@ -7,6 +8,7 @@ import { initRecentSync } from '@/stores/library/recent.svelte';
 import { clearLegacyClientStorage } from '@/lib/clearClientStorage';
 
 let stopSync: (() => void) | null = null;
+let startPromise: Promise<void> | null = null;
 
 export function initAppDataSync(): () => void {
   const stops = [
@@ -27,13 +29,27 @@ export function initAppDataSync(): () => void {
   };
 }
 
-/** 尽早拉取应用数据，避免等 App onMount 才订阅后端事件 */
+/** 等 Wails 桥接就绪后再拉取应用数据，避免「Callback not registered」。 */
 export function ensureAppDataSync(): () => void {
   if (stopSync) {
     return stopSync;
   }
-  stopSync = initAppDataSync();
-  return stopSync;
+
+  if (!startPromise) {
+    startPromise = waitForWailsBridge().then((ready) => {
+      if (!ready) {
+        console.warn('[appDataSync] Wails 桥接未就绪，跳过数据同步初始化');
+        return;
+      }
+      stopSync = initAppDataSync();
+    });
+  }
+
+  return () => {
+    stopSync?.();
+    stopSync = null;
+    startPromise = null;
+  };
 }
 
 ensureAppDataSync();

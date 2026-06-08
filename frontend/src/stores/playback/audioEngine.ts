@@ -123,7 +123,8 @@ function syncPlayState(shouldPlay: boolean) {
       syncingFromAudio = false;
       return;
     }
-    void audio.play()
+    void audio
+      .play()
       .then(() => {
         syncingFromAudio = true;
         setPlaying(true);
@@ -325,10 +326,10 @@ function attachAudioListeners(el: HTMLAudioElement) {
     if (player.repeatMode === 'one') {
       el.currentTime = 0;
       void el.play().catch(() => {
-        syncingFromAudio = true;
-        setPlaying(false);
-        syncingFromAudio = false;
-      });
+          syncingFromAudio = true;
+          setPlaying(false);
+          syncingFromAudio = false;
+        });
       return;
     }
     if (playNextTrack(true)) {
@@ -349,9 +350,6 @@ function onTrackOrPlayStateChange(track: PlayerTrack, playing: boolean) {
     void loadLyricsForTrack(track);
     if (audio) {
       if (playing) {
-        syncingFromAudio = true;
-        setPlaying(false);
-        syncingFromAudio = false;
         void loadAudioForTrack(track, true);
       } else {
         syncPlayState(false);
@@ -387,6 +385,13 @@ export function syncPlayerState(track: PlayerTrack, playing: boolean) {
 
 export function getAudioElement() {
   return audio;
+}
+
+export function getAudioSourceUrl(): string {
+  if (!audio) {
+    return '';
+  }
+  return audio.currentSrc || audio.src || '';
 }
 
 export function getAudioRoot() {

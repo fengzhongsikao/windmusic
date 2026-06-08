@@ -3,7 +3,8 @@
 -->
 <script lang="ts">
   import { fly } from 'svelte/transition';
-  import { ChevronDown, Settings } from '@lucide/svelte';
+  import { ChevronDown } from '@lucide/svelte';
+  import DetailViewSettingsMenu from '@/components/song/DetailViewSettingsMenu.svelte';
   import SongDetail from '@/pages/song/SongDetail.svelte';
   import { player, closeImmersiveView } from '@/stores/playback/player.svelte';
   import { fetchCoverUrl } from '@/lib/wailsPlayer';
@@ -72,11 +73,7 @@
           <ChevronDown size={20} strokeWidth={2} />
         </button>
 
-        <button type="button" class="settings-btn" aria-label="界面设置">
-          <Settings size={16} strokeWidth={1.75} />
-          <span>界面设置</span>
-          <ChevronDown size={14} class="settings-chevron" />
-        </button>
+        <DetailViewSettingsMenu />
       </header>
 
       <div class="detail-body">
@@ -166,25 +163,6 @@
   .close-handle:hover {
     background: rgba(255, 255, 255, 0.14);
     color: #fff;
-  }
-
-  .settings-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    color: rgba(255, 255, 255, 0.55);
-    font-size: 0.8125rem;
-    font-family: inherit;
-    cursor: pointer;
-  }
-
-  .settings-btn:hover {
-    color: rgba(255, 255, 255, 0.85);
-    background: rgba(255, 255, 255, 0.06);
   }
 
   .detail-body {

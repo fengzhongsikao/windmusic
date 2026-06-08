@@ -18,10 +18,20 @@ type PlayerSettingsStore struct {
 
 func DefaultPlayerSettings() models.PlayerSettings {
 	return models.PlayerSettings{
-		Volume:     30,
-		Muted:      false,
-		RepeatMode: "off",
-		Shuffled:   false,
+		Volume:         30,
+		Muted:          false,
+		RepeatMode:     "off",
+		Shuffled:       false,
+		WaveformSpread: "center-out",
+	}
+}
+
+func normalizeWaveformSpread(value string) string {
+	switch strings.TrimSpace(value) {
+	case "edges-in", "right-left":
+		return strings.TrimSpace(value)
+	default:
+		return "center-out"
 	}
 }
 
@@ -38,10 +48,11 @@ func normalizePlayerSettings(settings models.PlayerSettings) models.PlayerSettin
 		repeatMode = "off"
 	}
 	return models.PlayerSettings{
-		Volume:     volume,
-		Muted:      settings.Muted,
-		RepeatMode: repeatMode,
-		Shuffled:   settings.Shuffled,
+		Volume:         volume,
+		Muted:          settings.Muted,
+		RepeatMode:     repeatMode,
+		Shuffled:       settings.Shuffled,
+		WaveformSpread: normalizeWaveformSpread(settings.WaveformSpread),
 	}
 }
 

@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import type { PlayerTrack } from '@/stores/playback/player';
 import { GetLyric } from '../../../wailsjs/go/main/App';
+import { recoverFromStaleWailsBridge, waitForWailsBridge } from '@/lib/wailsBridge';
 import { fetchLocalSongExtras } from '@/lib/localMusic';
 
 export const lrcRaw = writable('');
@@ -62,6 +63,11 @@ export async function loadLyricsForTrack(track: PlayerTrack) {
     return;
   }
 
+  if (!(await waitForWailsBridge())) {
+    lyricLoading.set(false);
+    return;
+  }
+
   lyricLoading.set(true);
   lyricError.set('');
   try {
@@ -79,6 +85,9 @@ export async function loadLyricsForTrack(track: PlayerTrack) {
     lyricError.set('');
   } catch (err) {
     if (token !== lyricLoadToken) {
+      return;
+    }
+    if (recoverFromStaleWailsBridge(err)) {
       return;
     }
     lyricError.set(err instanceof Error ? err.message : String(err));

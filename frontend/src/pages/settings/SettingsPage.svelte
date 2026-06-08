@@ -7,7 +7,6 @@
     setActiveMetingURL,
   } from '@/stores/sources/meting.svelte';
   import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
-
   let dataDir = $state('');
   let message = $state('');
   let error = $state('');

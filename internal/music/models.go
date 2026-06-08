@@ -136,10 +136,11 @@ type LocalLibrarySnapshot struct {
 
 // PlayerSettings holds persisted playback UI preferences.
 type PlayerSettings struct {
-	Volume     int    `json:"volume"`
-	Muted      bool   `json:"muted"`
-	RepeatMode string `json:"repeatMode"`
-	Shuffled   bool   `json:"shuffled"`
+	Volume         int    `json:"volume"`
+	Muted          bool   `json:"muted"`
+	RepeatMode     string `json:"repeatMode"`
+	Shuffled       bool   `json:"shuffled"`
+	WaveformSpread string `json:"waveformSpread"`
 }
 
 // MetingSettings holds Meting API node configuration.

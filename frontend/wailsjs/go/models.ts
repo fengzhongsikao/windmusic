@@ -205,6 +205,7 @@ export namespace music {
 	    muted: boolean;
 	    repeatMode: string;
 	    shuffled: boolean;
+	    waveformSpread: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new PlayerSettings(source);
@@ -216,6 +217,7 @@ export namespace music {
 	        this.muted = source["muted"];
 	        this.repeatMode = source["repeatMode"];
 	        this.shuffled = source["shuffled"];
+	        this.waveformSpread = source["waveformSpread"];
 	    }
 	}
 	export class RecentSong {

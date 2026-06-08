@@ -15,6 +15,7 @@
     SetDiscoverRecommendCache,
   } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
+  import { recoverFromStaleWailsBridge, waitForWailsBridge } from '@/lib/wailsBridge';
 
   let activeTab = $state('recommend');
 
@@ -106,6 +107,10 @@
   }
 
   async function runRecommend(tabId: string) {
+    if (!(await waitForWailsBridge())) {
+      return;
+    }
+
     if (!hasMetingSource()) {
       songs = [];
       error = '';
@@ -137,6 +142,9 @@
       songs = resultSongs;
     } catch (err) {
       if (requestId !== recommendRequestId) return;
+      if (recoverFromStaleWailsBridge(err)) {
+        return;
+      }
       error = err instanceof Error ? err.message : String(err);
     } finally {
       if (requestId !== recommendRequestId) return;

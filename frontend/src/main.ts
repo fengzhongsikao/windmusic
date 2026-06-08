@@ -1,9 +1,17 @@
 import '@/style.css';
-import App from '@/App.svelte'
+import App from '@/App.svelte';
 import { mount, unmount } from 'svelte';
 
-const app = mount(App, { 
-  target: document.getElementById("app")!,
+const target = document.getElementById('app')!;
+
+const app = mount(App, {
+  target,
 });
 
-export default app
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    unmount(app);
+  });
+}
+
+export default app;

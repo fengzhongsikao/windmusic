@@ -1,6 +1,11 @@
 import { GetPlayerSettings, UpdatePlayerSettings } from '../../../wailsjs/go/main/App';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { music } from '../../../wailsjs/go/models';
+import {
+  DEFAULT_WAVEFORM_SPREAD,
+  normalizeWaveformSpreadMode,
+  type WaveformSpreadMode,
+} from '@/lib/waveformSpread';
 import { player, type RepeatMode } from '@/stores/playback/player.svelte';
 
 export const PLAYER_SETTINGS_UPDATED_EVENT = 'player-settings:updated';
@@ -9,6 +14,10 @@ const DEFAULT_VOLUME = 30;
 
 let syncInitialized = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+export const playerUiSettings = $state({
+  waveformSpread: DEFAULT_WAVEFORM_SPREAD as WaveformSpreadMode,
+});
 
 function normalizeRepeatMode(value: string | undefined): RepeatMode {
   if (value === 'all' || value === 'one') {
@@ -25,6 +34,7 @@ function applyPlayerSettings(raw: music.PlayerSettings) {
   player.isMuted = Boolean(raw.muted);
   player.repeatMode = normalizeRepeatMode(raw.repeatMode);
   player.isShuffled = Boolean(raw.shuffled);
+  playerUiSettings.waveformSpread = normalizeWaveformSpreadMode(raw.waveformSpread);
 }
 
 export function initPlayerSettingsSync(): () => void {
@@ -47,6 +57,11 @@ export function initPlayerSettingsSync(): () => void {
   };
 }
 
+export function setWaveformSpreadMode(mode: WaveformSpreadMode) {
+  playerUiSettings.waveformSpread = mode;
+  persistPlayerSettings();
+}
+
 export function persistPlayerSettings() {
   if (persistTimer) {
     clearTimeout(persistTimer);
@@ -58,6 +73,7 @@ export function persistPlayerSettings() {
       muted: player.isMuted,
       repeatMode: player.repeatMode,
       shuffled: player.isShuffled,
+      waveformSpread: playerUiSettings.waveformSpread,
     });
     void UpdatePlayerSettings(payload).catch(() => {});
   }, 120);

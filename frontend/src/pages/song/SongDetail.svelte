@@ -3,18 +3,17 @@
 -->
 <script lang="ts">
   import { Music, LoaderCircle } from '@lucide/svelte';
-  import SpectrumAnalyzer from '@/components/player/SpectrumAnalyzer.svelte';
+  import TrackWaveform from '@/components/player/TrackWaveform.svelte';
   import { player } from '@/stores/playback/player.svelte';
   import { parseLrc, findActiveLineIndex, type LrcLine } from '@/lib/lrc';
   import { lrcRaw, lyricLoading, lyricError } from '@/stores/playback/lyrics';
-  import { audioCurrentTime, audioLoading, audioError, mountAudioTo, seekAudio } from '@/stores/playback/audioEngine';
+  import { audioCurrentTime, audioLoading, audioError, seekAudio } from '@/stores/playback/audioEngine';
   import defaultCover from '@/assets/images/default.jpg';
 
   let track = $derived(player.currentSong);
   let coverSrc = $derived(track.coverUrl?.trim() || defaultCover);
   let currentTime = $derived($audioCurrentTime);
 
-  let audioHostEl = $state<HTMLDivElement | null>(null);
   let lyricsContainerEl = $state<HTMLDivElement | null>(null);
   let lineElements = $state<Record<number, HTMLButtonElement | undefined>>({});
 
@@ -36,12 +35,6 @@
   }
 
   $effect(() => {
-    const host = audioHostEl;
-    if (!host) return;
-    return mountAudioTo(host);
-  });
-
-  $effect(() => {
     const index = activeIndex;
     const container = lyricsContainerEl;
     const lineEl = index >= 0 ? lineElements[index] : undefined;
@@ -54,8 +47,6 @@
 </script>
 
 <div class="player-view">
-  <div bind:this={audioHostEl} class="audio-host" aria-hidden="true"></div>
-
   <div class="player-stage">
     <aside class="visual-side" aria-labelledby="track-heading">
       <div class="cover-wrap">
@@ -70,7 +61,8 @@
         <p class="track-sub">{artistLine}</p>
       </div>
 
-      <SpectrumAnalyzer active={player.isPlaying} tone="light" bars={44} />
+      <!-- 封面下方实时波浪：TrackWaveform（AnalyserNode + Canvas，仅此刻播放片段） -->
+      <TrackWaveform tone="light" />
     </aside>
 
     <section class="lyrics-side" aria-label="歌词">
@@ -137,14 +129,6 @@
       sans-serif;
     color: var(--text);
     -webkit-font-smoothing: antialiased;
-  }
-
-  .audio-host {
-    position: absolute;
-    width: 0;
-    height: 0;
-    overflow: hidden;
-    pointer-events: none;
   }
 
   .player-stage {
