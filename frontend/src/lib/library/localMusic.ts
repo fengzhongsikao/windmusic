@@ -128,6 +128,13 @@ export function localPathFromMetaJson(metaJson?: string): string {
   }
 }
 
+export function localPathFromStoredSong(song: StoredPlaybackSong): string {
+  if (!isLocalStoredSong(song)) {
+    return '';
+  }
+  return localPathFromMetaJson(song.metaJson) || song.id?.trim() || '';
+}
+
 /** 从收藏/最近播放/歌单等持久化记录还原播放上下文 */
 export function buildPlaybackContextFromStored(song: StoredPlaybackSong): PlaybackContext | undefined {
   const sourceId = song.sourceId?.trim() ?? '';

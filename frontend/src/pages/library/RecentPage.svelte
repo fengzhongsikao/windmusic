@@ -6,11 +6,16 @@
   import { removeRecentSong, clearRecentHistory, type RecentSong } from '@/lib/wails/wailsPlayer';
   import { formatPlayedAt } from '@/lib/library/recentTime';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
-  import { storedSongToPlayerTrack } from '@/lib/library/localMusic';
+  import {
+    fetchLocalSongCovers,
+    localPathFromStoredSong,
+    storedSongToPlayerTrack,
+  } from '@/lib/library/localMusic';
   import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/playback/player.svelte';
   import { recentState } from '@/stores/library/recent.svelte';
 
   let brokenCovers = $state<Record<string, true>>({});
+  let coverByPath = $state<Record<string, string>>({});
   let editMode = $state(false);
   let selectedIds = $state<Record<string, true>>({});
   let showClearDialog = $state(false);
@@ -39,6 +44,44 @@
     if (editMode) return;
     playAllTracks(recentSongs.map(recentToPlayerTrack));
   }
+
+  function resolveRecentCover(song: RecentSong): string {
+    const stored = song.coverUrl?.trim();
+    if (stored) {
+      return stored;
+    }
+    const path = localPathFromStoredSong(song);
+    if (path) {
+      return coverByPath[path]?.trim() ?? '';
+    }
+    return '';
+  }
+
+  $effect(() => {
+    const paths = [
+      ...new Set(
+        recentSongs
+          .map((song) => localPathFromStoredSong(song))
+          .filter((path) => path && !coverByPath[path]),
+      ),
+    ];
+    if (paths.length === 0) {
+      return;
+    }
+
+    void fetchLocalSongCovers(paths).then((batch) => {
+      const updates: Record<string, string> = {};
+      for (const [path, key] of Object.entries(batch.paths)) {
+        const cover = batch.covers[key];
+        if (cover && !coverByPath[path]) {
+          updates[path] = cover;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        coverByPath = { ...coverByPath, ...updates };
+      }
+    });
+  });
 
   function handleCoverError(url: string) {
     if (!url || brokenCovers[url]) return;
@@ -146,7 +189,7 @@
   {:else}
     <div class="song-list">
       {#each recentSongs as song, index (songKey(song))}
-        {@const cover = song.coverUrl?.trim() ?? ''}
+        {@const cover = resolveRecentCover(song)}
         {@const hasCover = cover !== '' && !brokenCovers[cover]}
         {@const active = isCurrentTrack(recentToPlayerTrack(song))}
         <button
