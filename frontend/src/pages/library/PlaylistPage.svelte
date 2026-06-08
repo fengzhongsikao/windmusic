@@ -18,7 +18,11 @@
     removeSongFromPlaylist,
     type UserPlaylist,
   } from '@/lib/library/playlists';
-  import { storedSongToPlayerTrack } from '@/lib/library/localMusic';
+  import {
+    fetchLocalSongCovers,
+    localPathFromStoredSong,
+    storedSongToPlayerTrack,
+  } from '@/lib/library/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { playlistsState, refreshPlaylistsFromBackend } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
@@ -35,11 +39,24 @@
   let error = $state('');
   let playlist = $state<UserPlaylist | null>(null);
   let brokenCovers = $state<Record<string, true>>({});
+  let coverByPath = $state<Record<string, string>>({});
   let editMode = $state(false);
   let selectedIds = $state<Record<string, true>>({});
   let showDeleteDialog = $state(false);
   let showDeletePlaylistDialog = $state(false);
   let deleting = $state(false);
+
+  function resolvePlaylistCover(song: FavoriteSong): string | undefined {
+    const stored = song.coverUrl?.trim();
+    if (stored) {
+      return stored;
+    }
+    const path = localPathFromStoredSong(song);
+    if (path) {
+      return coverByPath[path]?.trim() || undefined;
+    }
+    return undefined;
+  }
 
   const tracks = $derived<TrackItem[]>(
     (playlist?.songs ?? []).map((song) => ({
@@ -49,7 +66,7 @@
       artist: song.artist,
       album: song.album ?? '',
       duration: song.duration?.trim() || '—',
-      coverUrl: song.coverUrl?.trim() || undefined,
+      coverUrl: resolvePlaylistCover(song),
     })),
   );
 
@@ -194,6 +211,33 @@
     if (!playlist || playlist.id !== id || synced.songCount !== playlist.songCount) {
       playlist = synced;
     }
+  });
+
+  $effect(() => {
+    const songs = playlist?.songs ?? [];
+    const paths = [
+      ...new Set(
+        songs
+          .map((song) => localPathFromStoredSong(song))
+          .filter((path) => path && !coverByPath[path]),
+      ),
+    ];
+    if (paths.length === 0) {
+      return;
+    }
+
+    void fetchLocalSongCovers(paths).then((batch) => {
+      const updates: Record<string, string> = {};
+      for (const [path, key] of Object.entries(batch.paths)) {
+        const cover = batch.covers[key];
+        if (cover && !coverByPath[path]) {
+          updates[path] = cover;
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        coverByPath = { ...coverByPath, ...updates };
+      }
+    });
   });
 </script>
 

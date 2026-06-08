@@ -25,7 +25,6 @@
     onToggleSelect?: (track: TrackItem, selected: boolean) => void;
     showSize?: boolean;
     showPlaylistAction?: boolean;
-    showPlaylistMenu?: boolean;
   }
 
   let {
@@ -46,7 +45,6 @@
     onToggleSelect,
     showSize = false,
     showPlaylistAction = false,
-    showPlaylistMenu = false,
   }: Props = $props();
 
   const rowKey = $derived(String(track.listKey ?? track.id));
@@ -162,7 +160,7 @@
   {#if showSize}
     <span class="col-size" role="cell">{sizeLabel}</span>
   {/if}
-  {#if showPlaylistMenu && resolvePlayerTrack}
+  {#if resolvePlayerTrack}
     <span class="col-actions" role="cell">
       <AddToPlaylistMenu
         track={resolvePlayerTrack(track)}

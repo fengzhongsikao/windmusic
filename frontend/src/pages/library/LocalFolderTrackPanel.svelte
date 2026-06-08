@@ -2,8 +2,9 @@
   import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/playback/track';
   import type { LocalSortOption } from '@/lib/library/localTrackSort';
-  import { LOCAL_ALL_TAB_ID } from '@/stores/library/localLibrary.svelte';
-  import { player } from '@/stores/playback/player.svelte';
+  import { localSongToPlayerTrack } from '@/lib/library/localMusic';
+  import { LOCAL_ALL_TAB_ID, localLibrary } from '@/stores/library/localLibrary.svelte';
+  import { player, type PlayerTrack } from '@/stores/playback/player.svelte';
 
   interface Props {
     tabId: string;
@@ -17,6 +18,21 @@
 
   const displayActiveId = $derived(player.currentSong.id);
   const listId = $derived(`${tabId}:${sortKey}`);
+
+  function resolvePlayerTrack(track: TrackItem): PlayerTrack {
+    const song = localLibrary.songById.get(String(track.id));
+    if (!song) {
+      return {
+        id: track.id,
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration,
+        coverUrl: track.coverUrl,
+      };
+    }
+    return localSongToPlayerTrack(song, localLibrary.coverByPath[song.filePath]);
+  }
 </script>
 
 <div class="folder-track-panel">
@@ -37,6 +53,7 @@
       batchSize={100}
       activeId={displayActiveId}
       {onSelect}
+      {resolvePlayerTrack}
       localCovers
       loadCovers
       showSize

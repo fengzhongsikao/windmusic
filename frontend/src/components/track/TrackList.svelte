@@ -72,7 +72,6 @@
   let renderLimit = $state(80);
   let loadMoreEl = $state<HTMLDivElement | null>(null);
   let scrollEl = $state<HTMLDivElement | null>(null);
-  let actionRowKey = $state<string | null>(null);
 
   const useVirtual = $derived(virtual && tracks.length > 0);
   const useIncremental = $derived(!useVirtual && incremental);
@@ -165,38 +164,6 @@
     onOpenDetail?.(track);
   }
 
-  function isActive(track: TrackItem): boolean {
-    return activeId != null && activeId === track.id;
-  }
-
-  function rowKey(track: TrackItem): string {
-    return String(track.listKey ?? track.id);
-  }
-
-  function coverKey(track: TrackItem): string {
-    return rowKey(track);
-  }
-
-  function showPlaylistMenu(track: TrackItem): boolean {
-    if (!resolvePlayerTrack) {
-      return false;
-    }
-    const key = rowKey(track);
-    return actionRowKey === key || isActive(track);
-  }
-
-  function handleRowPointerEnter(track: TrackItem) {
-    if (resolvePlayerTrack) {
-      actionRowKey = rowKey(track);
-    }
-  }
-
-  function handleRowPointerLeave(track: TrackItem) {
-    if (actionRowKey === rowKey(track) && !isActive(track)) {
-      actionRowKey = null;
-    }
-  }
-
 </script>
 
 <div class="track-list" class:virtual-mode={useVirtual} role="table" aria-label={ariaLabel}>
@@ -230,10 +197,6 @@
           <div
             class="track-row-host track-row-virtual"
             style={`height: ${virtualRow.size}px; transform: translateY(${virtualRow.start}px)`}
-            onmouseenter={() => handleRowPointerEnter(track)}
-            onmouseleave={() => handleRowPointerLeave(track)}
-            onfocusin={() => handleRowPointerEnter(track)}
-            onfocusout={() => handleRowPointerLeave(track)}
           >
             <TrackListRow
               {track}
@@ -253,7 +216,6 @@
               {onToggleSelect}
               {showSize}
               {showPlaylistAction}
-              showPlaylistMenu={showPlaylistMenu(track)}
             />
           </div>
         {/each}
@@ -261,13 +223,7 @@
     </div>
   {:else}
   {#each visibleTracks as track, index (track.listKey ?? track.id)}
-    <div
-      class="track-row-host"
-      onmouseenter={() => handleRowPointerEnter(track)}
-      onmouseleave={() => handleRowPointerLeave(track)}
-      onfocusin={() => handleRowPointerEnter(track)}
-      onfocusout={() => handleRowPointerLeave(track)}
-    >
+    <div class="track-row-host">
       <TrackListRow
         {track}
         {index}
@@ -286,7 +242,6 @@
         {onToggleSelect}
         {showSize}
         {showPlaylistAction}
-        showPlaylistMenu={showPlaylistMenu(track)}
       />
     </div>
   {/each}
@@ -494,7 +449,8 @@
 
   .track-list :global(.track-row:hover .col-actions),
   .track-list :global(.track-row:focus-within .col-actions),
-  .track-list :global(.track-row.active .col-actions) {
+  .track-list :global(.track-row.active .col-actions),
+  .track-list :global(.track-row:has(.track-row-action-btn[data-state='open']) .col-actions) {
     opacity: 1;
   }
 
