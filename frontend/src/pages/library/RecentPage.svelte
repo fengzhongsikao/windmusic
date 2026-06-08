@@ -2,23 +2,14 @@
   最近播放：数据来自本地 recent.json，开始播放时自动记录。
 -->
 <script lang="ts">
-  import { onMount } from 'svelte';
   import { Clock, Music } from '@lucide/svelte';
-  import {
-    clearRecentHistory,
-    fetchRecentSongs,
-    onRecentChanged,
-    removeRecentSong,
-    type RecentSong,
-  } from '@/lib/wailsPlayer';
+  import { removeRecentSong, clearRecentHistory, type RecentSong } from '@/lib/wailsPlayer';
   import { formatPlayedAt } from '@/lib/recentTime';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
   import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/playback/player.svelte';
+  import { recentState } from '@/stores/library/recent.svelte';
 
-  let loading = $state(false);
-  let error = $state('');
-  let recentSongs = $state<RecentSong[]>([]);
   let brokenCovers = $state<Record<string, true>>({});
   let editMode = $state(false);
   let selectedIds = $state<Record<string, true>>({});
@@ -26,6 +17,10 @@
   let showDeleteDialog = $state(false);
   let clearing = $state(false);
   let deleting = $state(false);
+  let error = $state('');
+
+  const recentSongs = $derived(recentState.items);
+  const loading = $derived(!recentState.loaded);
 
   function songKey(song: RecentSong): string {
     return [song.id, song.sourceId, song.platform, song.metaJson].join('|');
@@ -84,7 +79,6 @@
       }
       showDeleteDialog = false;
       cancelEdit();
-      await loadRecent();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -99,33 +93,12 @@
       await clearRecentHistory();
       showClearDialog = false;
       cancelEdit();
-      await loadRecent();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
       clearing = false;
     }
   }
-
-  async function loadRecent() {
-    loading = true;
-    error = '';
-    try {
-      recentSongs = await fetchRecentSongs();
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-      recentSongs = [];
-    } finally {
-      loading = false;
-    }
-  }
-
-  onMount(() => {
-    void loadRecent();
-    return onRecentChanged(() => {
-      void loadRecent();
-    });
-  });
 
 </script>
 

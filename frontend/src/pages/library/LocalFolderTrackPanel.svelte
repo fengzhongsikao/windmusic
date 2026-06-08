@@ -1,33 +1,25 @@
 <script lang="ts">
   import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import { LOCAL_ALL_TAB_ID, localLibrary } from '@/stores/library/localLibrary.svelte';
+  import type { LocalSortOption } from '@/lib/localTrackSort';
+  import { LOCAL_ALL_TAB_ID } from '@/stores/library/localLibrary.svelte';
   import { player } from '@/stores/playback/player.svelte';
 
   interface Props {
     tabId: string;
     tabLabel: string;
-    visible: boolean;
+    tracks: TrackItem[];
+    sortKey: LocalSortOption;
     onSelect: (track: TrackItem) => void;
   }
 
-  let { tabId, tabLabel, visible, onSelect }: Props = $props();
+  let { tabId, tabLabel, tracks, sortKey, onSelect }: Props = $props();
 
-  const tracks = $derived(localLibrary.tracksByTab[tabId] ?? []);
-
-  let displayActiveId = $state<string | number | null>(null);
-  let displayPlaying = $state(false);
-
-  $effect(() => {
-    if (!visible) {
-      return;
-    }
-    displayActiveId = player.currentSong.id;
-    displayPlaying = player.isPlaying;
-  });
+  const displayActiveId = $derived(player.currentSong.id);
+  const listId = $derived(`${tabId}:${sortKey}`);
 </script>
 
-<div class="folder-track-panel" class:is-visible={visible}>
+<div class="folder-track-panel">
   {#if tracks.length === 0}
     <p class="empty-hint">
       {#if tabId === LOCAL_ALL_TAB_ID}
@@ -39,11 +31,14 @@
   {:else}
     <TrackList
       {tracks}
-      listId={tabId}
+      listId={listId}
+      incremental
+      initialBatch={100}
+      batchSize={100}
       activeId={displayActiveId}
-      isPlaying={displayPlaying}
       {onSelect}
       localCovers
+      loadCovers
       showSize
       ariaLabel={tabId === LOCAL_ALL_TAB_ID ? '本地歌曲列表' : `本地歌曲列表：${tabLabel}`}
     />
@@ -51,20 +46,6 @@
 </div>
 
 <style>
-  .folder-track-panel {
-    display: none;
-  }
-
-  .folder-track-panel.is-visible {
-    display: block;
-  }
-
-  .folder-track-panel:not(.is-visible) {
-    content-visibility: hidden;
-    contain: strict;
-    pointer-events: none;
-  }
-
   .empty-hint {
     color: #999;
     font-size: 14px;

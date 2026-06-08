@@ -12,9 +12,11 @@
 
   let { onCreated }: Props = $props();
 
+  let menuOpen = $state(false);
   let createFields = $state<PlaylistCreateFields | null>(null);
 
   function handleOpenChange(details: { open: boolean }) {
+    menuOpen = details.open;
     if (details.open) {
       queueMicrotask(() => createFields?.focusInput());
     } else {
@@ -24,12 +26,14 @@
 
   function handleCreated() {
     createFields?.reset();
+    menuOpen = false;
     onCreated?.();
   }
 </script>
 
 <Menu
   class="create-playlist-menu-root"
+  open={menuOpen}
   closeOnSelect={false}
   aria-label="新建歌单"
   positioning={{ placement: 'bottom-start', gutter: 6 }}

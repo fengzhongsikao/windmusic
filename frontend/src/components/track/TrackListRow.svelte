@@ -3,6 +3,7 @@
   import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
   import type { TrackItem } from '@/lib/track';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
+  import { player } from '@/stores/playback/player.svelte';
   import { localLibrary } from '@/stores/library/localLibrary.svelte';
 
   interface Props {
@@ -10,7 +11,6 @@
     index: number;
     indexOffset?: number;
     activeId?: string | number | null;
-    isPlaying?: boolean;
     brokenCovers?: Record<string, true>;
     /** Read cover from localLibrary.coverByPath[filePath] with per-row reactivity */
     localCovers?: boolean;
@@ -33,7 +33,6 @@
     index,
     indexOffset = 0,
     activeId = null,
-    isPlaying = false,
     brokenCovers = {},
     localCovers = false,
     loadCovers = true,
@@ -54,7 +53,7 @@
   const filePath = $derived(rowKey);
 
   const coverUrl = $derived.by(() => {
-    if (localCovers) {
+    if (localCovers && loadCovers) {
       const fromStore = localLibrary.coverByPath[filePath]?.trim();
       if (fromStore) {
         return fromStore;
@@ -70,6 +69,7 @@
 
   const hasCover = $derived(coverUrl !== '' && !brokenCovers[coverUrl]);
   const active = $derived(activeId != null && activeId === track.id);
+  const showPlaying = $derived(active ? player.isPlaying : false);
   const sizeLabel = $derived(track.size?.trim() || '—');
 </script>
 
@@ -106,7 +106,7 @@
     </span>
   {/if}
   <span class="col-index" role="cell">
-    {#if active && isPlaying}
+    {#if active && showPlaying}
       <span class="playing-indicator" aria-hidden="true">
         <span></span><span></span><span></span>
       </span>
@@ -126,12 +126,12 @@
           decoding="async"
           onerror={() => onCoverError?.(coverUrl)}
         />
-        {#if active && isPlaying}
+        {#if active && showPlaying}
           <span class="cover-overlay">
             <Play size={14} />
           </span>
         {/if}
-      {:else if active && isPlaying}
+      {:else if active && showPlaying}
         <Play size={14} />
       {:else}
         <Music size={14} />

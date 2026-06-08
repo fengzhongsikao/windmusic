@@ -6,7 +6,7 @@
   import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
   import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
-  import { getMetingPlatform, getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
+  import { getMetingPlatform, getMetingURL, hasMetingSource, metingSettings, metingSourceId } from '@/stores/sources/meting.svelte';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import {
@@ -51,18 +51,14 @@
 
   async function resolveSourceId(): Promise<string> {
     const metingURL = getMetingURL();
-    if (metingURL) {
-      return metingSourceId(metingURL);
+    if (!metingURL) {
+      throw new Error('请先在设置中添加 Meting 源');
     }
-    return 'builtin::network';
+    return metingSourceId(metingURL);
   }
 
   function resolvePlatform(): string {
-    const metingURL = getMetingURL();
-    if (metingURL) {
-      return getMetingPlatform();
-    }
-    return '';
+    return getMetingPlatform();
   }
 
   const tracks = $derived<TrackItem[]>(
@@ -110,6 +106,13 @@
   }
 
   async function runRecommend(tabId: string) {
+    if (!hasMetingSource()) {
+      songs = [];
+      error = '';
+      loading = false;
+      return;
+    }
+
     const keyword = CATEGORY_KEYWORDS[tabId] ?? CATEGORY_KEYWORDS.recommend;
     const requestId = ++recommendRequestId;
 
@@ -168,7 +171,7 @@
   }
 
   async function prefetchAllTabs() {
-    if (hasPrefetchedTabs) {
+    if (!hasMetingSource() || hasPrefetchedTabs) {
       return;
     }
     hasPrefetchedTabs = true;
@@ -183,12 +186,14 @@
         // fetch below
       }
       const keyword = CATEGORY_KEYWORDS[tab.id] ?? CATEGORY_KEYWORDS.recommend;
-      void getRecommendSongs(tab.id, keyword);
+      void getRecommendSongs(tab.id, keyword).catch(() => {});
     }
   }
 
-  // 初次加载 + Tab 切换都会刷新推荐
+  // 初次加载 + Tab 切换都会刷新推荐；Meting 源变化时也会重试
   $effect(() => {
+    void metingSettings.loaded;
+    void metingSettings.urls.length;
     void runRecommend(activeTab);
     void prefetchAllTabs();
   });
@@ -214,7 +219,9 @@
     {/if}
   </div>
 
-  {#if error}
+  {#if !hasMetingSource() && metingSettings.loaded}
+    <div class="recommend-empty">请先在设置中添加 Meting 源以加载推荐</div>
+  {:else if error}
     <div class="recommend-error">{error}</div>
   {:else if loading && tracks.length === 0}
     <div class="recommend-loading">
@@ -225,7 +232,6 @@
     <TrackList
       {tracks}
       activeId={currentSongId}
-      isPlaying={player.isPlaying}
       onSelect={playTrack}
       resolvePlayerTrack={resolvePlayerTrack}
     />
@@ -284,7 +290,8 @@
   }
 
   .recommend-loading,
-  .recommend-error {
+  .recommend-error,
+  .recommend-empty {
     padding: 64px 24px;
     display: flex;
     align-items: center;

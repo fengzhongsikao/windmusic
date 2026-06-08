@@ -6,21 +6,34 @@ import (
 
 	models "windmusic/internal/music"
 	"windmusic/internal/musicsearch"
+	"windmusic/music/cache"
 )
 
-func Search(sourceID, platform, keyword string, page int) (*models.SearchResult, error) {
+func Search(sourceID, platform, keyword string, page int, searchCache *cache.SearchCache) (*models.SearchResult, error) {
 	startedAt := time.Now()
 	source := SourceDisplayName(sourceID)
 	logPrefix := BackendLogPrefix(sourceID)
 	log.Printf("%s 开始搜索 source=%s platform=%s page=%d keyword=%q", logPrefix, source, platform, page, keyword)
 
 	base := ResolveMetingBase(sourceID)
-	result, err := musicsearch.SearchMeting(base, platform, keyword, page, 20)
+	if searchCache != nil {
+		if cached, ok := searchCache.Get(base, platform, keyword, page, 20); ok {
+			log.Printf("%s 搜索命中缓存 source=%s platform=%s total=%d list=%d elapsed=%s", logPrefix, source, platform, cached.Total, len(cached.List), time.Since(startedAt))
+			return cached, nil
+		}
+	}
+
+	items, itemSource, err := musicsearch.FetchMetingSearchAll(base, platform, keyword)
 	if err != nil {
 		log.Printf("%s 搜索失败 source=%s platform=%s err=%v elapsed=%s", logPrefix, source, platform, err, time.Since(startedAt))
 		return nil, err
 	}
-	log.Printf("%s 搜索完成 source=%s platform=%s total=%d list=%d elapsed=%s", logPrefix, source, result.Source, result.Total, len(result.List), time.Since(startedAt))
+	if searchCache != nil {
+		searchCache.Set(base, platform, keyword, items, itemSource)
+	}
+
+	result := musicsearch.PaginateSongItems(items, page, 20, itemSource)
+	log.Printf("%s 搜索完成 source=%s platform=%s total=%d list=%d elapsed=%s", logPrefix, source, platform, result.Total, len(result.List), time.Since(startedAt))
 	return result, nil
 }
 

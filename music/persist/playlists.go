@@ -22,8 +22,11 @@ var (
 )
 
 type PlaylistsStore struct {
-	path string
-	mu   sync.Mutex
+	path   string
+	mu     sync.Mutex
+	loaded bool
+	items  []models.UserPlaylist
+	flush  flushScheduler
 }
 
 func (s *PlaylistsStore) List() ([]models.UserPlaylist, error) {
@@ -41,11 +44,10 @@ func (s *PlaylistsStore) Create(name string) (models.UserPlaylist, error) {
 		return models.UserPlaylist{}, ErrPlaylistNameEmpty
 	}
 
-	playlists, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return models.UserPlaylist{}, err
 	}
-	for _, item := range playlists {
+	for _, item := range s.items {
 		if strings.EqualFold(strings.TrimSpace(item.Name), trimmed) {
 			return models.UserPlaylist{}, ErrPlaylistNameExists
 		}
@@ -57,8 +59,8 @@ func (s *PlaylistsStore) Create(name string) (models.UserPlaylist, error) {
 		CreatedAt: time.Now().UTC(),
 		Songs:     []models.FavoriteSong{},
 	}
-	playlists = append(playlists, playlist)
-	if err := s.writeLocked(playlists); err != nil {
+	s.items = append(s.items, playlist)
+	if err := s.flushNowLocked(); err != nil {
 		return models.UserPlaylist{}, err
 	}
 	return playlist, nil
@@ -73,11 +75,10 @@ func (s *PlaylistsStore) Get(id string) (models.UserPlaylist, error) {
 		return models.UserPlaylist{}, ErrPlaylistNotFound
 	}
 
-	playlists, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return models.UserPlaylist{}, err
 	}
-	for _, item := range playlists {
+	for _, item := range s.items {
 		if item.ID == playlistID {
 			return item, nil
 		}
@@ -94,8 +95,7 @@ func (s *PlaylistsStore) AddSong(playlistID string, song models.FavoriteSong) er
 		return ErrPlaylistNotFound
 	}
 
-	playlists, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
 
@@ -105,23 +105,24 @@ func (s *PlaylistsStore) AddSong(playlistID string, song models.FavoriteSong) er
 	}
 
 	found := false
-	for i := range playlists {
-		if playlists[i].ID != id {
+	for i := range s.items {
+		if s.items[i].ID != id {
 			continue
 		}
 		found = true
-		for _, existing := range playlists[i].Songs {
+		for _, existing := range s.items[i].Songs {
 			if sameFavoriteSong(existing, entry) {
 				return nil
 			}
 		}
-		playlists[i].Songs = append(playlists[i].Songs, entry)
+		s.items[i].Songs = append(s.items[i].Songs, entry)
 		break
 	}
 	if !found {
 		return ErrPlaylistNotFound
 	}
-	return s.writeLocked(playlists)
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *PlaylistsStore) RemoveSong(playlistID string, song models.FavoriteSong) error {
@@ -133,31 +134,31 @@ func (s *PlaylistsStore) RemoveSong(playlistID string, song models.FavoriteSong)
 		return ErrPlaylistNotFound
 	}
 
-	playlists, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
 
 	entry := normalizeFavoriteSong(song)
 	found := false
-	for i := range playlists {
-		if playlists[i].ID != id {
+	for i := range s.items {
+		if s.items[i].ID != id {
 			continue
 		}
 		found = true
-		next := make([]models.FavoriteSong, 0, len(playlists[i].Songs))
-		for _, item := range playlists[i].Songs {
+		next := make([]models.FavoriteSong, 0, len(s.items[i].Songs))
+		for _, item := range s.items[i].Songs {
 			if !sameFavoriteSong(item, entry) {
 				next = append(next, item)
 			}
 		}
-		playlists[i].Songs = next
+		s.items[i].Songs = next
 		break
 	}
 	if !found {
 		return ErrPlaylistNotFound
 	}
-	return s.writeLocked(playlists)
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *PlaylistsStore) Delete(id string) error {
@@ -169,14 +170,13 @@ func (s *PlaylistsStore) Delete(id string) error {
 		return ErrPlaylistNotFound
 	}
 
-	playlists, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
 
-	next := make([]models.UserPlaylist, 0, len(playlists))
+	next := make([]models.UserPlaylist, 0, len(s.items))
 	found := false
-	for _, item := range playlists {
+	for _, item := range s.items {
 		if item.ID == playlistID {
 			found = true
 			continue
@@ -186,7 +186,9 @@ func (s *PlaylistsStore) Delete(id string) error {
 	if !found {
 		return ErrPlaylistNotFound
 	}
-	return s.writeLocked(next)
+	s.items = next
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *PlaylistsStore) ensurePathLocked() (string, error) {
@@ -201,7 +203,29 @@ func (s *PlaylistsStore) ensurePathLocked() (string, error) {
 	return s.path, nil
 }
 
+func (s *PlaylistsStore) ensureLoadedLocked() error {
+	if s.loaded {
+		return nil
+	}
+	items, err := s.readDiskLocked()
+	if err != nil {
+		return err
+	}
+	s.items = items
+	s.loaded = true
+	return nil
+}
+
 func (s *PlaylistsStore) readLocked() ([]models.UserPlaylist, error) {
+	if err := s.ensureLoadedLocked(); err != nil {
+		return nil, err
+	}
+	out := make([]models.UserPlaylist, len(s.items))
+	copy(out, s.items)
+	return out, nil
+}
+
+func (s *PlaylistsStore) readDiskLocked() ([]models.UserPlaylist, error) {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return nil, err
@@ -228,7 +252,27 @@ func (s *PlaylistsStore) readLocked() ([]models.UserPlaylist, error) {
 	return playlists, nil
 }
 
-func (s *PlaylistsStore) writeLocked(playlists []models.UserPlaylist) error {
+func (s *PlaylistsStore) queueFlushLocked() {
+	s.flush.schedule(s.flushToDisk)
+}
+
+func (s *PlaylistsStore) flushNowLocked() error {
+	if !s.loaded {
+		return nil
+	}
+	return s.writeDiskLocked(s.items)
+}
+
+func (s *PlaylistsStore) flushToDisk() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.loaded {
+		return nil
+	}
+	return s.writeDiskLocked(s.items)
+}
+
+func (s *PlaylistsStore) writeDiskLocked(playlists []models.UserPlaylist) error {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return err

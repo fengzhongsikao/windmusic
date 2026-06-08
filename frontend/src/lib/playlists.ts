@@ -10,8 +10,10 @@ import { music } from '../../wailsjs/go/models';
 import { favoriteSongKey, type FavoriteSong } from '@/lib/favoriteSong';
 import {
   clearPlaylistDetailCache,
+  deleteCachedPlaylist,
   getCachedPlaylist,
   getPlaylists,
+  refreshPlaylistsFromBackend,
   setCachedPlaylist,
 } from '@/stores/library/playlistsStore.svelte';
 import { PLAYLISTS_UPDATED_EVENT } from '@/stores/library/playlistsStore.svelte';
@@ -100,6 +102,8 @@ export async function fetchPlaylist(
   if (!options?.force) {
     const cached = getCachedPlaylist(playlistId);
     if (cached) return cached;
+  } else {
+    deleteCachedPlaylist(playlistId);
   }
 
   try {
@@ -134,10 +138,12 @@ function toWailsFavoriteSong(song: FavoriteSong): music.FavoriteSong {
 
 export async function addSongToPlaylist(playlistId: string, song: FavoriteSong): Promise<void> {
   await AddPlaylistSong(playlistId, toWailsFavoriteSong(song));
+  await refreshPlaylistsFromBackend();
 }
 
 export async function removeSongFromPlaylist(playlistId: string, song: FavoriteSong): Promise<void> {
   await RemovePlaylistSong(playlistId, toWailsFavoriteSong(song));
+  await refreshPlaylistsFromBackend();
 }
 
 export async function deleteUserPlaylist(playlistId: string): Promise<void> {

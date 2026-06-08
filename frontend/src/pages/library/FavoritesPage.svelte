@@ -6,25 +6,22 @@
   import { Heart } from '@lucide/svelte';
   import TrackList from '@/components/track/TrackList.svelte';
   import type { TrackItem } from '@/lib/track';
-  import {
-    favoriteSongKey,
-    fetchFavorites,
-    onFavoritesChanged,
-    removeTrackFavorite,
-  } from '@/lib/wailsPlayer';
+  import { favoriteSongKey, removeTrackFavorite } from '@/lib/wailsPlayer';
   import type { FavoriteSong } from '@/lib/wailsPlayer';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
+  import { favoritesState, refreshFavoritesFromBackend } from '@/stores/library/favorites.svelte';
 
-  let loading = $state(false);
-  let error = $state('');
-  let favorites = $state<FavoriteSong[]>([]);
   let brokenCovers = $state<Record<string, true>>({});
   let editMode = $state(false);
   let selectedIds = $state<Record<string, true>>({});
   let showDeleteDialog = $state(false);
   let deleting = $state(false);
+  let error = $state('');
+
+  const favorites = $derived(favoritesState.items);
+  const loading = $derived(!favoritesState.loaded);
 
   const tracks = $derived<TrackItem[]>(
     favorites.map((song) => ({
@@ -39,6 +36,10 @@
   );
 
   let currentSongId = $derived(player.currentSong.id);
+
+  onMount(() => {
+    void refreshFavoritesFromBackend();
+  });
 
   function favoriteToPlayerTrack(song: FavoriteSong) {
     return storedSongToPlayerTrack(song);
@@ -130,38 +131,12 @@
       }
       showDeleteDialog = false;
       cancelEdit();
-      await loadFavorites();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
       deleting = false;
     }
   }
-
-  async function loadFavorites(force = false) {
-    const showLoading = favorites.length === 0;
-    if (showLoading) {
-      loading = true;
-    }
-    error = '';
-    try {
-      favorites = await fetchFavorites({ force });
-    } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
-      if (favorites.length === 0) {
-        favorites = [];
-      }
-    } finally {
-      loading = false;
-    }
-  }
-
-  onMount(() => {
-    void loadFavorites();
-    return onFavoritesChanged(() => {
-      void loadFavorites(true);
-    });
-  });
 
 </script>
 
@@ -210,7 +185,10 @@
     <TrackList
       {tracks}
       activeId={currentSongId}
-      isPlaying={player.isPlaying}
+      incremental
+      initialBatch={100}
+      batchSize={100}
+      listId="favorites"
       {brokenCovers}
       onSelect={playTrack}
       onCoverError={handleCoverError}

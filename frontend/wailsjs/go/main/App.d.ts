@@ -68,7 +68,7 @@ export function RemovePlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<
 
 export function RemoveRecent(arg1:music.RecentSong):Promise<void>;
 
-export function ScanLocalLibrary():Promise<Array<music.LocalSong>>;
+export function ScanLocalLibrary():Promise<void>;
 
 export function Search(arg1:string,arg2:string,arg3:string,arg4:number):Promise<music.SearchResult>;
 

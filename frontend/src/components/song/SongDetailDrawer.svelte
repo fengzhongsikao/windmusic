@@ -92,24 +92,30 @@
     inset: 0;
     z-index: 100;
     overflow: hidden;
+    /* blur 失效或未加载封面时的兜底，避免放大窗口后透出主界面 */
+    background-color: #0e0a08;
   }
 
   .detail-bg {
     position: absolute;
     inset: -25%;
+    background-color: #1a1210;
     background-size: cover;
     background-position: center;
+    background-repeat: no-repeat;
     filter: blur(90px) saturate(1.25) brightness(0.5);
     transform: scale(1.1);
     transition: opacity 0.55s ease;
+    will-change: transform;
   }
 
   .detail-scrim {
     position: absolute;
     inset: 0;
-    background:
-      radial-gradient(ellipse 90% 70% at 25% 20%, rgba(90, 58, 42, 0.4), transparent 55%),
-      linear-gradient(180deg, rgba(24, 18, 14, 0.75) 0%, rgba(14, 10, 8, 0.94) 100%);
+    background-color: #0e0a08;
+    background-image:
+      radial-gradient(ellipse 90% 70% at 25% 20%, rgba(90, 58, 42, 0.45), rgba(14, 10, 8, 0.92) 55%),
+      linear-gradient(180deg, rgba(24, 18, 14, 0.88) 0%, rgba(14, 10, 8, 0.98) 100%);
   }
 
   .detail-panel {

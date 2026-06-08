@@ -15,25 +15,99 @@ export const audioReady = writable(false);
 let audio: HTMLAudioElement | null = null;
 let audioRoot: HTMLElement | null = null;
 let mountCount = 0;
-let listenersAttached = false;
 
 let audioLoadToken = 0;
 let lastTrackKey = '';
 let lastPlaying = false;
 let syncingFromAudio = false;
 let switchingTrack = false;
+let attachedAudioEl: HTMLAudioElement | null = null;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function updateTimeState() {
-  if (!audio) {
-    return;
+function resolveAudioURL(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return '';
   }
-  audioCurrentTime.set(audio.currentTime);
-  const duration = Number.isFinite(audio.duration) ? audio.duration : 0;
+  if (/^(?:wails|https?):\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    return new URL(trimmed, window.location.href).href;
+  } catch {
+    return trimmed;
+  }
+}
+
+function waitForAudioCanPlay(el: HTMLAudioElement, loadToken: number): Promise<void> {
+  if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('audio load timeout'));
+    }, 30000);
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
+      el.removeEventListener('canplay', onReady);
+      el.removeEventListener('error', onError);
+    };
+    const onReady = () => {
+      cleanup();
+      resolve();
+    };
+    const onError = () => {
+      cleanup();
+      reject(new Error('audio load failed'));
+    };
+    el.addEventListener('canplay', onReady, { once: true });
+    el.addEventListener('error', onError, { once: true });
+  }).then(() => {
+    if (loadToken !== audioLoadToken) {
+      throw new Error('audio load superseded');
+    }
+  });
+}
+
+function audioSourceMatches(el: HTMLAudioElement, url: string): boolean {
+  const target = resolveAudioURL(url);
+  if (!target) {
+    return false;
+  }
+  return el.src === target || el.currentSrc === target;
+}
+
+function readTimeState(): { currentTime: number; duration: number } {
+  if (!audio) {
+    return { currentTime: 0, duration: 0 };
+  }
+  return {
+    currentTime: audio.currentTime,
+    duration: Number.isFinite(audio.duration) ? audio.duration : 0,
+  };
+}
+
+function publishTimeState(currentTime: number, duration: number) {
+  audioCurrentTime.set(currentTime);
   audioDuration.set(duration);
+}
+
+function flushTimeState() {
+  const { currentTime, duration } = readTimeState();
+  publishTimeState(currentTime, duration);
+}
+
+function updateTimeState() {
+  flushTimeState();
+}
+
+function resetPublishedTimeState() {
+  audioCurrentTime.set(0);
+  audioDuration.set(0);
 }
 
 function syncPlayState(shouldPlay: boolean) {
@@ -73,6 +147,7 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
   audioLoading.set(true);
   audioError.set('');
   audioReady.set(false);
+  resetPublishedTimeState();
 
   if (!audio) {
     switchingTrack = false;
@@ -92,8 +167,7 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
     audio.removeAttribute('src');
     audio.load();
     syncingFromAudio = false;
-    audioCurrentTime.set(0);
-    audioDuration.set(0);
+    resetPublishedTimeState();
     if (shouldAutoPlay) {
       audioError.set('播放歌曲失败');
       errorToast('播放歌曲失败');
@@ -114,14 +188,6 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
       return;
     }
 
-    console.info('前端[音频引擎] 获取播放地址结果', {
-      title: track.title,
-      artist: track.artist,
-      platform: isLocal ? 'local' : ctx!.platform,
-      sourceId: isLocal ? 'local' : ctx!.sourceId,
-      local: isLocal,
-    });
-
     const playableUrl = url.trim();
     if (!playableUrl) {
       syncingFromAudio = true;
@@ -137,15 +203,28 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
       return;
     }
 
+    console.info('前端[音频引擎] 获取播放地址结果', {
+      title: track.title,
+      artist: track.artist,
+      platform: isLocal ? 'local' : ctx!.platform,
+      sourceId: isLocal ? 'local' : ctx!.sourceId,
+      local: isLocal,
+      url: playableUrl,
+    });
+
     syncingFromAudio = true;
     audio.pause();
-    if (audio.src !== playableUrl) {
-      audio.src = playableUrl;
+    if (!audioSourceMatches(audio, playableUrl)) {
+      audio.src = resolveAudioURL(playableUrl);
       audio.load();
     }
     syncingFromAudio = false;
 
     if (shouldAutoPlay) {
+      await waitForAudioCanPlay(audio, token);
+      if (token !== audioLoadToken || !audio) {
+        return;
+      }
       await audio.play();
       syncingFromAudio = true;
       setPlaying(true);
@@ -156,6 +235,11 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
     if (token !== audioLoadToken) {
       return;
     }
+    console.error('[音频引擎] 加载失败', {
+      error: errorMessage(err),
+      title: track.title,
+      localPath: isLocal ? localPath : undefined,
+    });
     syncingFromAudio = true;
     audio.pause();
     audio.removeAttribute('src');
@@ -175,17 +259,18 @@ async function loadAudioForTrack(track: PlayerTrack, shouldAutoPlay: boolean) {
 }
 
 function attachAudioListeners(el: HTMLAudioElement) {
-  if (listenersAttached) {
+  if (attachedAudioEl === el) {
     return;
   }
-  listenersAttached = true;
+  attachedAudioEl = el;
 
   el.addEventListener('timeupdate', updateTimeState);
   el.addEventListener('loadedmetadata', () => {
-    updateTimeState();
+    flushTimeState();
     audioReady.set(true);
   });
-  el.addEventListener('durationchange', updateTimeState);
+  el.addEventListener('durationchange', flushTimeState);
+  el.addEventListener('playing', flushTimeState);
   el.addEventListener('canplay', () => {
     audioError.set('');
   });
@@ -227,6 +312,7 @@ function attachAudioListeners(el: HTMLAudioElement) {
   });
 
   el.addEventListener('pause', () => {
+    flushTimeState();
     if (syncingFromAudio || switchingTrack) {
       return;
     }
@@ -313,7 +399,7 @@ export function seekAudio(seconds: number) {
   }
   const clamped = Math.max(0, Number.isFinite(audio.duration) ? Math.min(seconds, audio.duration) : seconds);
   audio.currentTime = clamped;
-  audioCurrentTime.set(clamped);
+  flushTimeState();
 }
 
 export function setAudioVolume(percent: number, muted: boolean) {

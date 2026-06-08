@@ -74,17 +74,86 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 		return nil, err
 	}
 
-	start := (page - 1) * limit
-	if start > len(items) {
-		start = len(items)
+	return paginateMetingItems(items, server, platform, page, limit), nil
+}
+
+// FetchMetingSearchAll converts the full Meting search response into song items.
+func FetchMetingSearchAll(baseURL, platform, keyword string) ([]music.SongItem, string, error) {
+	server, err := metingAPIServer(platform)
+	if err != nil {
+		return nil, "", err
 	}
-	end := start + limit
-	if end > len(items) {
-		end = len(items)
+	if err := validateMetingSearch(server); err != nil {
+		return nil, "", err
 	}
 
-	list := make([]music.SongItem, 0, end-start)
-	for idx, item := range items[start:end] {
+	items, err := searchMeting(normalizeMetingBase(baseURL), server, keyword)
+	if err != nil {
+		return nil, "", err
+	}
+	return metingItemsToSongItems(items, server, platform), platform, nil
+}
+
+func paginateMetingItems(items []metingItem, server, platform string, page, limit int) *music.SearchResult {
+	if page < 1 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+
+	all := metingItemsToSongItems(items, server, platform)
+	total := len(all)
+	start := (page - 1) * limit
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+
+	list := make([]music.SongItem, end-start)
+	copy(list, all[start:end])
+	return &music.SearchResult{
+		List:   list,
+		Total:  total,
+		Page:   page,
+		Limit:  limit,
+		Source: platform,
+	}
+}
+
+func PaginateSongItems(all []music.SongItem, page, limit int, source string) *music.SearchResult {
+	if page < 1 {
+		page = 1
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	total := len(all)
+	start := (page - 1) * limit
+	if start > total {
+		start = total
+	}
+	end := start + limit
+	if end > total {
+		end = total
+	}
+	list := make([]music.SongItem, end-start)
+	copy(list, all[start:end])
+	return &music.SearchResult{
+		List:   list,
+		Total:  total,
+		Page:   page,
+		Limit:  limit,
+		Source: source,
+	}
+}
+
+func metingItemsToSongItems(items []metingItem, server, platform string) []music.SongItem {
+	list := make([]music.SongItem, 0, len(items))
+	for idx, item := range items {
 		title := item.songTitle()
 		author := item.songAuthor()
 		id := idFromMetingURL(item.URL)
@@ -92,7 +161,7 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 			id = idFromMetingURL(item.Lrc)
 		}
 		if id == "" {
-			id = fmt.Sprintf("meting:%s:%s:%d", title, author, start+idx)
+			id = fmt.Sprintf("meting:%s:%s:%d", title, author, idx)
 		}
 
 		metaJSON, _ := json.Marshal(metingTrack{
@@ -117,14 +186,7 @@ func SearchMeting(baseURL, platform, keyword string, page, limit int) (*music.Se
 			MetaJSON: string(metaJSON),
 		})
 	}
-
-	return &music.SearchResult{
-		List:   list,
-		Total:  len(items),
-		Page:   page,
-		Limit:  limit,
-		Source: platform,
-	}, nil
+	return list
 }
 
 // GetMetingMusicURL 返回搜索时写入 metaJSON 的 url 字段（Meting 播放地址）。
@@ -180,10 +242,10 @@ func idFromMetingURL(raw string) string {
 // metingAPIServer 将前端平台标识映射为 Meting API 的 server 参数。
 func metingAPIServer(platform string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(platform)) {
-	case "", "tx", "tencent", "qq":
-		return "tencent", nil
-	case "wy", "netease", "163":
+	case "", "wy", "netease", "163":
 		return "netease", nil
+	case "tx", "tencent", "qq":
+		return "tencent", nil
 	default:
 		return "", fmt.Errorf("unsupported meting platform: %s", platform)
 	}

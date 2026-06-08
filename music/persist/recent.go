@@ -15,8 +15,11 @@ import (
 const recentPlayMaxItems = 200
 
 type RecentStore struct {
-	path string
-	mu   sync.Mutex
+	path   string
+	mu     sync.Mutex
+	loaded bool
+	items  []models.RecentSong
+	flush  flushScheduler
 }
 
 func (s *RecentStore) List() ([]models.RecentSong, error) {
@@ -29,17 +32,16 @@ func (s *RecentStore) Record(song models.RecentSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	recent, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
 
 	entry := normalizeRecentSong(song)
 	entry.PlayedAt = time.Now().UTC()
 
-	next := make([]models.RecentSong, 0, len(recent)+1)
+	next := make([]models.RecentSong, 0, len(s.items)+1)
 	next = append(next, entry)
-	for _, item := range recent {
+	for _, item := range s.items {
 		if !sameRecentSong(item, entry) {
 			next = append(next, item)
 		}
@@ -47,30 +49,38 @@ func (s *RecentStore) Record(song models.RecentSong) error {
 	if len(next) > recentPlayMaxItems {
 		next = next[:recentPlayMaxItems]
 	}
-	return s.writeLocked(next)
+	s.items = next
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *RecentStore) Remove(song models.RecentSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	recent, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
-	next := make([]models.RecentSong, 0, len(recent))
-	for _, item := range recent {
+	next := make([]models.RecentSong, 0, len(s.items))
+	for _, item := range s.items {
 		if !sameRecentSong(item, song) {
 			next = append(next, item)
 		}
 	}
-	return s.writeLocked(next)
+	s.items = next
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *RecentStore) Clear() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.writeLocked([]models.RecentSong{})
+	if err := s.ensureLoadedLocked(); err != nil {
+		return err
+	}
+	s.items = []models.RecentSong{}
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *RecentStore) ensurePathLocked() (string, error) {
@@ -85,7 +95,29 @@ func (s *RecentStore) ensurePathLocked() (string, error) {
 	return s.path, nil
 }
 
+func (s *RecentStore) ensureLoadedLocked() error {
+	if s.loaded {
+		return nil
+	}
+	items, err := s.readDiskLocked()
+	if err != nil {
+		return err
+	}
+	s.items = items
+	s.loaded = true
+	return nil
+}
+
 func (s *RecentStore) readLocked() ([]models.RecentSong, error) {
+	if err := s.ensureLoadedLocked(); err != nil {
+		return nil, err
+	}
+	out := make([]models.RecentSong, len(s.items))
+	copy(out, s.items)
+	return out, nil
+}
+
+func (s *RecentStore) readDiskLocked() ([]models.RecentSong, error) {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return nil, err
@@ -107,7 +139,20 @@ func (s *RecentStore) readLocked() ([]models.RecentSong, error) {
 	return recent, nil
 }
 
-func (s *RecentStore) writeLocked(recent []models.RecentSong) error {
+func (s *RecentStore) queueFlushLocked() {
+	s.flush.schedule(s.flushToDisk)
+}
+
+func (s *RecentStore) flushToDisk() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.loaded {
+		return nil
+	}
+	return s.writeDiskLocked(s.items)
+}
+
+func (s *RecentStore) writeDiskLocked(recent []models.RecentSong) error {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return err

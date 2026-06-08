@@ -10,6 +10,8 @@
   import {
     getMetingPlatform,
     getMetingURL,
+    hasMetingSource,
+    metingSettings,
     metingSourceId,
     type MetingPlatform,
   } from '@/lib/meting';
@@ -124,10 +126,10 @@
 
   async function resolveSourceId(): Promise<string> {
     const metingURL = getMetingURL();
-    if (metingURL) {
-      return metingSourceId(metingURL);
+    if (!metingURL) {
+      throw new Error('请先在设置中添加 Meting 源');
     }
-    return 'builtin::network';
+    return metingSourceId(metingURL);
   }
 
   function resolvePlatform(): string {
@@ -276,6 +278,8 @@
     if (router.location !== '/search') {
       return;
     }
+    void metingSettings.loaded;
+    void metingSettings.urls.length;
     selectedPlatform = getMetingPlatform();
     const { q, page: pageNum } = parseSearchParams(router.querystring);
     void runSearch(q, pageNum);
@@ -332,7 +336,6 @@
       <TrackList
         {tracks}
         activeId={currentSongId}
-        isPlaying={player.isPlaying}
         {indexOffset}
         {brokenCovers}
         onSelect={playTrack}

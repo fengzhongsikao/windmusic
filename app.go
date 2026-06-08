@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync"
 
 	models "windmusic/internal/music"
 	"windmusic/music/appdata"
@@ -14,20 +15,38 @@ import (
 )
 
 type App struct {
-	ctx       context.Context
-	favorites persist.FavoritesStore
-	recent    persist.RecentStore
-	playlists persist.PlaylistsStore
-	local     localmusic.LocalLibraryStore
-	player    persist.PlayerSettingsStore
-	meting    persist.MetingSettingsStore
-	discover  *cache.DiscoverCache
+	ctx        context.Context
+	favorites  persist.FavoritesStore
+	recent     persist.RecentStore
+	playlists  persist.PlaylistsStore
+	local      localmusic.LocalLibraryStore
+	localAudio *localmusic.AudioServer
+	player     persist.PlayerSettingsStore
+	meting     persist.MetingSettingsStore
+	discover    *cache.DiscoverCache
+	lyricCache  *cache.LyricCache
+	searchCache *cache.SearchCache
+
+	localScanMu      sync.Mutex
+	localScanRunning bool
+	localScanPending bool
 }
 
 func NewApp() *App {
-	return &App{
-		discover: cache.NewDiscoverCache(),
+	app := &App{
+		discover:    cache.NewDiscoverCache(),
+		lyricCache:  cache.NewLyricCache(),
+		searchCache: cache.NewSearchCache(),
 	}
+	app.localAudio = localmusic.NewAudioServer(&app.local)
+	app.local.SetCoverURLBuilder(func(coverKey string) string {
+		url, err := app.localAudio.CoverURL(coverKey)
+		if err != nil {
+			return ""
+		}
+		return url
+	})
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -37,7 +56,7 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) Search(sourceID, platform, keyword string, page int) (*models.SearchResult, error) {
-	return metingmusic.Search(sourceID, platform, keyword, page)
+	return metingmusic.Search(sourceID, platform, keyword, page, a.searchCache)
 }
 
 func (a *App) GetMusicURL(sourceID, platform, quality, metaJSON string) (string, error) {
@@ -45,7 +64,15 @@ func (a *App) GetMusicURL(sourceID, platform, quality, metaJSON string) (string,
 }
 
 func (a *App) GetLyric(sourceID, platform, metaJSON string) (*models.LyricInfo, error) {
-	return metingmusic.GetLyric(sourceID, platform, metaJSON)
+	if lyric, ok := a.lyricCache.Get(metaJSON); ok {
+		return lyric, nil
+	}
+	lyric, err := metingmusic.GetLyric(sourceID, platform, metaJSON)
+	if err != nil {
+		return nil, err
+	}
+	a.lyricCache.Set(metaJSON, lyric)
+	return lyric, nil
 }
 
 func (a *App) GetPic(sourceID, platform, metaJSON string) (string, error) {
@@ -57,32 +84,7 @@ func (a *App) GetSourceDataDir() (string, error) {
 }
 
 func (a *App) localLibrarySnapshot() (models.LocalLibrarySnapshot, error) {
-	folders, err := a.local.ListFolders()
-	if err != nil {
-		return models.LocalLibrarySnapshot{}, err
-	}
-	if folders == nil {
-		folders = []string{}
-	}
-	counts, err := a.local.FolderCounts()
-	if err != nil {
-		return models.LocalLibrarySnapshot{}, err
-	}
-	if counts == nil {
-		counts = map[string]int{}
-	}
-	aliases, err := a.local.ListFolderAliases()
-	if err != nil {
-		return models.LocalLibrarySnapshot{}, err
-	}
-	if aliases == nil {
-		aliases = map[string]string{}
-	}
-	return models.LocalLibrarySnapshot{
-		Folders:       folders,
-		FolderAliases: aliases,
-		FolderCounts:  counts,
-	}, nil
+	return a.local.Snapshot()
 }
 
 func (a *App) emitLocalLibrarySnapshot() {

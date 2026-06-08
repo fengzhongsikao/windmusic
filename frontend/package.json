@@ -25,6 +25,7 @@
     "@lucide/svelte": "^1.3.0",
     "@skeletonlabs/skeleton": "^4.15.2",
     "@skeletonlabs/skeleton-svelte": "^4.15.2",
+    "@tanstack/svelte-virtual": "^3.13.28",
     "svelte-spa-router": "^5.1.0"
   }
 }

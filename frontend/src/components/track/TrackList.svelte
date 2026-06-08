@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { createVirtualizer } from '@tanstack/svelte-virtual';
+  import { get } from 'svelte/store';
   import TrackListRow from '@/components/track/TrackListRow.svelte';
   import type { TrackItem } from '@/lib/track';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
@@ -6,7 +8,6 @@
   interface Props {
     tracks: TrackItem[];
     activeId?: string | number | null;
-    isPlaying?: boolean;
     indexOffset?: number;
     brokenCovers?: Record<string, true>;
     coverByPath?: Record<string, string>;
@@ -24,6 +25,9 @@
     incremental?: boolean;
     initialBatch?: number;
     batchSize?: number;
+    /** 真虚拟滚动，适合 500+ 行列表 */
+    virtual?: boolean;
+    virtualRowHeight?: number;
     /** When set, only resets incremental batching when this key changes (not on every tracks ref change). */
     resetKey?: string | number;
     /** Stable id for restoring incremental render limit across track array swaps (e.g. local folder tabs). */
@@ -39,7 +43,6 @@
   let {
     tracks,
     activeId = null,
-    isPlaying = false,
     indexOffset = 0,
     brokenCovers = {},
     coverByPath,
@@ -55,6 +58,8 @@
     incremental = false,
     initialBatch = 80,
     batchSize = 80,
+    virtual = false,
+    virtualRowHeight = 58,
     resetKey,
     listId,
     localCovers = false,
@@ -66,12 +71,46 @@
 
   let renderLimit = $state(80);
   let loadMoreEl = $state<HTMLDivElement | null>(null);
+  let scrollEl = $state<HTMLDivElement | null>(null);
   let actionRowKey = $state<string | null>(null);
 
+  const useVirtual = $derived(virtual && tracks.length > 0);
+  const useIncremental = $derived(!useVirtual && incremental);
   const showPlaylistAction = $derived(Boolean(resolvePlayerTrack));
-  const visibleTracks = $derived(incremental ? tracks.slice(0, renderLimit) : tracks);
-  const hasMoreTracks = $derived(incremental && renderLimit < tracks.length);
+  const visibleTracks = $derived(useIncremental ? tracks.slice(0, renderLimit) : tracks);
+  const hasMoreTracks = $derived(useIncremental && renderLimit < tracks.length);
+
+  const virtualizer = createVirtualizer({
+    get count() {
+      return tracks.length;
+    },
+    getScrollElement: () => scrollEl,
+    estimateSize: () => virtualRowHeight,
+    overscan: 12,
+  });
+
+  // 列表在 display:none 容器里预挂载时，虚拟滚动视口高度为 0，切回页面后需重新测量
   $effect(() => {
+    if (!useVirtual || !scrollEl) {
+      return;
+    }
+    const el = scrollEl;
+    tracks.length;
+
+    const remeasure = () => {
+      get(virtualizer).measure();
+    };
+
+    remeasure();
+    const observer = new ResizeObserver(remeasure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  });
+
+  $effect(() => {
+    if (!useIncremental) {
+      return;
+    }
     if (resetKey !== undefined) {
       resetKey;
       renderLimit = initialBatch;
@@ -97,11 +136,14 @@
   });
 
   $effect(() => {
+    if (!useIncremental) {
+      return;
+    }
     renderLimit;
     tracks.length;
     paused;
 
-    if (paused || !incremental || !loadMoreEl || !hasMoreTracks) {
+    if (paused || !loadMoreEl || !hasMoreTracks) {
       return;
     }
 
@@ -157,7 +199,7 @@
 
 </script>
 
-<div class="track-list" role="table" aria-label={ariaLabel}>
+<div class="track-list" class:virtual-mode={useVirtual} role="table" aria-label={ariaLabel}>
   <div
     class="track-list-header"
     class:selection-mode={selectionMode}
@@ -180,6 +222,44 @@
     {/if}
   </div>
 
+  {#if useVirtual}
+    <div class="track-list-scroll" bind:this={scrollEl}>
+      <div class="track-list-virtual-spacer" style={`height: ${$virtualizer.getTotalSize()}px`}>
+        {#each $virtualizer.getVirtualItems() as virtualRow (virtualRow.key)}
+          {@const track = tracks[virtualRow.index]}
+          <div
+            class="track-row-host track-row-virtual"
+            style={`height: ${virtualRow.size}px; transform: translateY(${virtualRow.start}px)`}
+            onmouseenter={() => handleRowPointerEnter(track)}
+            onmouseleave={() => handleRowPointerLeave(track)}
+            onfocusin={() => handleRowPointerEnter(track)}
+            onfocusout={() => handleRowPointerLeave(track)}
+          >
+            <TrackListRow
+              {track}
+              index={virtualRow.index}
+              {indexOffset}
+              {activeId}
+              {brokenCovers}
+              {localCovers}
+              {loadCovers}
+              {coverByPath}
+              {onSelect}
+              {onOpenDetail}
+              {onCoverError}
+              {resolvePlayerTrack}
+              {selectionMode}
+              {selectedIds}
+              {onToggleSelect}
+              {showSize}
+              {showPlaylistAction}
+              showPlaylistMenu={showPlaylistMenu(track)}
+            />
+          </div>
+        {/each}
+      </div>
+    </div>
+  {:else}
   {#each visibleTracks as track, index (track.listKey ?? track.id)}
     <div
       class="track-row-host"
@@ -193,7 +273,6 @@
         {index}
         {indexOffset}
         {activeId}
-        {isPlaying}
         {brokenCovers}
         {localCovers}
         {loadCovers}
@@ -214,6 +293,7 @@
 
   {#if hasMoreTracks}
     <div class="track-list-load-more" bind:this={loadMoreEl} aria-hidden="true"></div>
+  {/if}
   {/if}
 </div>
 
@@ -534,5 +614,23 @@
     50% {
       transform: scaleY(0.4);
     }
+  }
+
+  .track-list.virtual-mode .track-list-scroll {
+    max-height: min(70vh, calc(100vh - 240px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .track-list-virtual-spacer {
+    position: relative;
+    width: 100%;
+  }
+
+  .track-row-virtual {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
   }
 </style>

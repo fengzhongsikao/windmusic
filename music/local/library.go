@@ -35,8 +35,22 @@ var audioExtensions = map[string]struct{}{
 type LocalLibraryStore struct {
 	mu sync.RWMutex
 
-	folderSongsByKey    map[string][]models.LocalSong
+	foldersLoaded bool
+	foldersFile   localFoldersFile
+
+	folderSongsByKey      map[string][]models.LocalSong
 	folderSongsIndexValid bool
+
+	cacheLoaded  bool
+	extrasLoaded bool
+	cache        *localScanCacheFile
+	extras       *localExtrasFile
+	cacheDirty   bool
+	extrasDirty  bool
+
+	db         *libraryDB
+	coverFiles *coverFileStore
+	coverURL   func(string) string
 }
 
 func (s *LocalLibraryStore) invalidateFolderSongsIndex() {
@@ -121,81 +135,114 @@ func (s *LocalLibraryStore) foldersPath() (string, error) {
 	return filepath.Join(root, "local-folders.json"), nil
 }
 
-func (s *LocalLibraryStore) cachePath() (string, error) {
-	root, err := appdata.AppDataRootDir()
-	if err != nil {
-		return "", err
+func (s *LocalLibraryStore) ensureScanCacheLoaded() error {
+	s.mu.RLock()
+	if s.cacheLoaded {
+		s.mu.RUnlock()
+		return nil
 	}
-	return filepath.Join(root, "local-scan-cache.json"), nil
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadScanCacheFromDiskLocked()
 }
 
-func (s *LocalLibraryStore) extrasPath() (string, error) {
-	root, err := appdata.AppDataRootDir()
-	if err != nil {
-		return "", err
+func (s *LocalLibraryStore) ensureExtrasLoaded() error {
+	s.mu.RLock()
+	if s.extrasLoaded {
+		s.mu.RUnlock()
+		return nil
 	}
-	return filepath.Join(root, "local-scan-extras.json"), nil
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.loadExtrasFromDiskLocked()
 }
 
-func (s *LocalLibraryStore) readExtrasLocked() (*localExtrasFile, error) {
-	path, err := s.extrasPath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return newExtrasFile(), nil
-		}
-		return nil, err
-	}
-	if len(data) == 0 {
-		return newExtrasFile(), nil
-	}
-	var extras localExtrasFile
-	if err := json.Unmarshal(data, &extras); err != nil {
-		return nil, err
-	}
-	extras.ensureMaps()
-	if extras.normalize() {
-		if err := s.writeExtrasLocked(&extras); err != nil {
-			return nil, err
-		}
-	}
-	return &extras, nil
+func (s *LocalLibraryStore) SetCoverURLBuilder(fn func(string) string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.coverURL = fn
 }
 
-func (s *LocalLibraryStore) writeExtrasLocked(extras *localExtrasFile) error {
-	path, err := s.extrasPath()
+func (s *LocalLibraryStore) loadExtrasFromDiskLocked() error {
+	if s.extrasLoaded {
+		return nil
+	}
+	if err := s.ensureLibraryDB(); err != nil {
+		return err
+	}
+	extras, err := s.db.loadExtras()
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	s.extras = extras
+	s.extrasLoaded = true
+	return nil
+}
+
+func (s *LocalLibraryStore) loadScanCacheFromDiskLocked() error {
+	if s.cacheLoaded {
+		return nil
+	}
+	if err := s.ensureLibraryDB(); err != nil {
 		return err
 	}
-	extras.ensureMaps()
-	payload, err := json.MarshalIndent(extras, "", "  ")
+	cache, err := s.db.loadScanCache()
 	if err != nil {
 		return err
 	}
-	payload = append(payload, '\n')
-	return os.WriteFile(path, payload, 0o644)
-}
-
-func migrateLegacyCache(cache *localScanCacheFile, extras *localExtrasFile) {
-	extras.ensureMaps()
-	for path, entry := range cache.Entries {
-		if entry.Song.CoverData == "" && entry.Song.Lyric == "" {
-			continue
-		}
-		extras.assignSong(path, entry.Song.CoverData, entry.Song.Lyric)
-		entry.Song.CoverData = ""
-		entry.Song.Lyric = ""
-		cache.Entries[path] = entry
+	if cache == nil || len(cache.Entries) == 0 {
+		s.cache = newScanCache()
+		s.cacheLoaded = true
+		return nil
 	}
+	s.cache = cache
+	s.cacheLoaded = true
+	return nil
 }
 
-func (s *LocalLibraryStore) readFoldersFileLocked() (localFoldersFile, error) {
+func (s *LocalLibraryStore) flushExtrasLocked() error {
+	if !s.extrasDirty || s.extras == nil {
+		return nil
+	}
+	if err := s.writeExtrasToDiskLocked(s.extras); err != nil {
+		return err
+	}
+	s.extrasDirty = false
+	return nil
+}
+
+func (s *LocalLibraryStore) writeExtrasToDiskLocked(extras *localExtrasFile) error {
+	if s.db == nil {
+		return fmt.Errorf("local library db is not open")
+	}
+	extras.ensureMaps()
+	return s.db.saveExtras(extras)
+}
+
+func (s *LocalLibraryStore) flushScanCacheLocked() error {
+	if !s.cacheDirty || s.cache == nil {
+		return nil
+	}
+	if err := s.writeScanCacheToDiskLocked(s.cache); err != nil {
+		return err
+	}
+	s.cacheDirty = false
+	return nil
+}
+
+func (s *LocalLibraryStore) flushCachesLocked() error {
+	if err := s.flushScanCacheLocked(); err != nil {
+		return err
+	}
+	return s.flushExtrasLocked()
+}
+
+
+func (s *LocalLibraryStore) readFoldersFileFromDisk() (localFoldersFile, error) {
 	path, err := s.foldersPath()
 	if err != nil {
 		return localFoldersFile{}, err
@@ -220,7 +267,27 @@ func (s *LocalLibraryStore) readFoldersFileLocked() (localFoldersFile, error) {
 	return payload, nil
 }
 
-func (s *LocalLibraryStore) writeFoldersFileLocked(file localFoldersFile) error {
+func (s *LocalLibraryStore) ensureFoldersLoadedLocked() error {
+	if s.foldersLoaded {
+		return nil
+	}
+	file, err := s.readFoldersFileFromDisk()
+	if err != nil {
+		return err
+	}
+	s.foldersFile = file
+	s.foldersLoaded = true
+	return nil
+}
+
+func (s *LocalLibraryStore) readFoldersFileLocked() (localFoldersFile, error) {
+	if err := s.ensureFoldersLoadedLocked(); err != nil {
+		return localFoldersFile{}, err
+	}
+	return s.foldersFile, nil
+}
+
+func (s *LocalLibraryStore) writeFoldersFileToDisk(file localFoldersFile) error {
 	path, err := s.foldersPath()
 	if err != nil {
 		return err
@@ -239,6 +306,18 @@ func (s *LocalLibraryStore) writeFoldersFileLocked(file localFoldersFile) error 
 	if err := os.WriteFile(path, payload, 0o644); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *LocalLibraryStore) writeFoldersFileLocked(file localFoldersFile) error {
+	file.Paths = normalizeFolderPaths(file.Paths)
+	file.ensureMaps()
+	pruneFolderAliases(&file)
+	if err := s.writeFoldersFileToDisk(file); err != nil {
+		return err
+	}
+	s.foldersFile = file
+	s.foldersLoaded = true
 	s.invalidateFolderSongsIndex()
 	return nil
 }
@@ -282,49 +361,6 @@ func normalizeFolderPaths(paths []string) []string {
 	return out
 }
 
-func (s *LocalLibraryStore) readCacheLocked() (*localScanCacheFile, error) {
-	path, err := s.cachePath()
-	if err != nil {
-		return nil, err
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return newScanCache(), nil
-		}
-		return nil, err
-	}
-	if len(data) == 0 {
-		return newScanCache(), nil
-	}
-	var cache localScanCacheFile
-	if err := json.Unmarshal(data, &cache); err != nil {
-		return nil, err
-	}
-	if cache.Entries == nil {
-		cache.Entries = map[string]localScanCacheEntry{}
-	}
-	if cache.Version != localScanCacheVersion {
-		extras, err := s.readExtrasLocked()
-		if err != nil {
-			return nil, err
-		}
-		if cache.Version == 2 {
-			migrateLegacyCache(&cache, extras)
-			cache.Version = localScanCacheVersion
-			if err := s.writeExtrasLocked(extras); err != nil {
-				return nil, err
-			}
-			if err := s.writeCacheLocked(&cache); err != nil {
-				return nil, err
-			}
-		} else {
-			return newScanCache(), nil
-		}
-	}
-	return &cache, nil
-}
-
 func newScanCache() *localScanCacheFile {
 	return &localScanCacheFile{
 		Version: localScanCacheVersion,
@@ -332,28 +368,46 @@ func newScanCache() *localScanCacheFile {
 	}
 }
 
-func (s *LocalLibraryStore) writeCacheLocked(cache *localScanCacheFile) error {
-	path, err := s.cachePath()
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+func (s *LocalLibraryStore) writeScanCacheToDiskLocked(cache *localScanCacheFile) error {
+	if s.db == nil {
+		return fmt.Errorf("local library db is not open")
 	}
 	if cache.Entries == nil {
 		cache.Entries = map[string]localScanCacheEntry{}
 	}
 	cache.Version = localScanCacheVersion
-	payload, err := json.MarshalIndent(cache, "", "  ")
-	if err != nil {
-		return err
+	return s.db.saveScanCache(cache)
+}
+
+func scanCacheEqual(a, b *localScanCacheFile) bool {
+	if a == nil || b == nil {
+		return a == b
 	}
-	payload = append(payload, '\n')
-	if err := os.WriteFile(path, payload, 0o644); err != nil {
-		return err
+	if len(a.Entries) != len(b.Entries) {
+		return false
 	}
-	s.invalidateFolderSongsIndex()
-	return nil
+	for path, bv := range b.Entries {
+		av, ok := a.Entries[path]
+		if !ok || av.ModTimeUnix != bv.ModTimeUnix {
+			return false
+		}
+	}
+	return true
+}
+
+func extrasEqual(a, b *localExtrasFile) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	if len(a.Entries) != len(b.Entries) {
+		return false
+	}
+	for path, ref := range b.Entries {
+		if a.Entries[path] != ref {
+			return false
+		}
+	}
+	return true
 }
 
 func (s *LocalLibraryStore) ListFolders() ([]string, error) {
@@ -479,25 +533,23 @@ func (s *LocalLibraryStore) RemoveFolder(folderPath string) error {
 		return err
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
+	if err := s.loadScanCacheFromDiskLocked(); err != nil {
 		return err
 	}
-	extras, err := s.readExtrasLocked()
-	if err != nil {
+	if err := s.loadExtrasFromDiskLocked(); err != nil {
 		return err
 	}
 	prefix := target + string(os.PathSeparator)
-	for path := range cache.Entries {
+	for path := range s.cache.Entries {
 		if path == target || strings.HasPrefix(path, prefix) {
-			delete(cache.Entries, path)
-			delete(extras.Entries, path)
+			delete(s.cache.Entries, path)
+			delete(s.extras.Entries, path)
 		}
 	}
-	if err := s.writeCacheLocked(cache); err != nil {
-		return err
-	}
-	return s.writeExtrasLocked(extras)
+	s.cacheDirty = true
+	s.extrasDirty = true
+	s.invalidateFolderSongsIndex()
+	return s.flushCachesLocked()
 }
 
 func PickMusicFolder(ctx context.Context) (string, error) {
@@ -546,18 +598,17 @@ func (s *LocalLibraryStore) Scan() ([]models.LocalSong, error) {
 		return []models.LocalSong{}, nil
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
+	if err := s.loadScanCacheFromDiskLocked(); err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
-	extras, err := s.readExtrasLocked()
-	if err != nil {
+	if err := s.loadExtrasFromDiskLocked(); err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
-	workingCache := cloneScanCache(cache)
-	workingExtras := cloneExtrasFile(extras)
+	workingCache := cloneScanCache(s.cache)
+	workingExtras := cloneExtrasFile(s.extras)
+	coverFiles := s.coverFiles
 	s.mu.Unlock()
 
 	type folderResult struct {
@@ -575,7 +626,7 @@ func (s *LocalLibraryStore) Scan() ([]models.LocalSong, error) {
 		wg.Add(1)
 		go func(idx int, root string) {
 			defer wg.Done()
-			songs, paths, err := scanFolder(root, workingCache, workingExtras, &cacheMu)
+			songs, paths, err := scanFolder(root, workingCache, workingExtras, coverFiles, &cacheMu)
 			if err != nil {
 				scanErrMu.Lock()
 				if scanErr == nil {
@@ -610,11 +661,17 @@ func (s *LocalLibraryStore) Scan() ([]models.LocalSong, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := s.writeCacheLocked(workingCache); err != nil {
-		return nil, err
-	}
 	workingExtras.pruneUnusedCovers()
-	if err := s.writeExtrasLocked(workingExtras); err != nil {
+	if !scanCacheEqual(s.cache, workingCache) {
+		s.cache = workingCache
+		s.cacheDirty = true
+		s.invalidateFolderSongsIndex()
+	}
+	if !extrasEqual(s.extras, workingExtras) {
+		s.extras = workingExtras
+		s.extrasDirty = true
+	}
+	if err := s.flushCachesLocked(); err != nil {
 		return nil, err
 	}
 
@@ -622,7 +679,7 @@ func (s *LocalLibraryStore) Scan() ([]models.LocalSong, error) {
 	return allSongs, nil
 }
 
-// ListCached returns songs from the on-disk scan cache without walking the filesystem.
+// ListCached returns songs from the in-memory scan cache without walking the filesystem.
 func (s *LocalLibraryStore) ListCached() ([]models.LocalSong, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -635,13 +692,12 @@ func (s *LocalLibraryStore) ListCached() ([]models.LocalSong, error) {
 		return []models.LocalSong{}, nil
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
+	if err := s.loadScanCacheFromDiskLocked(); err != nil {
 		return nil, err
 	}
 
-	songs := make([]models.LocalSong, 0, len(cache.Entries))
-	for path, entry := range cache.Entries {
+	songs := make([]models.LocalSong, 0, len(s.cache.Entries))
+	for path, entry := range s.cache.Entries {
 		if !fileInMusicFolders(path, folders) {
 			continue
 		}
@@ -688,6 +744,10 @@ func sortLocalSongs(songs []models.LocalSong) {
 
 // FolderCounts returns song counts per folder tab (including LocalAllTabID).
 func (s *LocalLibraryStore) FolderCounts() (map[string]int, error) {
+	if err := s.ensureScanCacheLoaded(); err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -699,17 +759,53 @@ func (s *LocalLibraryStore) FolderCounts() (map[string]int, error) {
 		return map[string]int{models.LocalAllTabID: 0}, nil
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
-		return nil, err
-	}
-
-	s.ensureFolderSongsIndexLocked(folders, cache)
+	s.ensureFolderSongsIndexLocked(folders, s.cache)
 	counts := make(map[string]int, len(s.folderSongsByKey))
 	for key, songs := range s.folderSongsByKey {
 		counts[key] = len(songs)
 	}
 	return counts, nil
+}
+
+// Snapshot returns folder paths, aliases, and per-tab song counts in one lock acquisition.
+func (s *LocalLibraryStore) Snapshot() (models.LocalLibrarySnapshot, error) {
+	if err := s.ensureScanCacheLoaded(); err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if err := s.ensureFoldersLoadedLocked(); err != nil {
+		return models.LocalLibrarySnapshot{}, err
+	}
+
+	folders := s.foldersFile.Paths
+	if folders == nil {
+		folders = []string{}
+	}
+
+	counts := map[string]int{models.LocalAllTabID: 0}
+	if len(folders) > 0 && s.cache != nil {
+		s.ensureFolderSongsIndexLocked(folders, s.cache)
+		for key, songs := range s.folderSongsByKey {
+			counts[key] = len(songs)
+		}
+	}
+
+	aliases := make(map[string]string, len(s.foldersFile.Aliases))
+	for path, alias := range s.foldersFile.Aliases {
+		trimmed := strings.TrimSpace(alias)
+		if trimmed != "" {
+			aliases[path] = trimmed
+		}
+	}
+
+	return models.LocalLibrarySnapshot{
+		Folders:       folders,
+		FolderAliases: aliases,
+		FolderCounts:  counts,
+	}, nil
 }
 
 func cloneLocalSongForList(song models.LocalSong) models.LocalSong {
@@ -720,6 +816,10 @@ func cloneLocalSongForList(song models.LocalSong) models.LocalSong {
 
 // AllFolderSongs returns a copy of the in-memory per-tab song index (built from scan cache).
 func (s *LocalLibraryStore) AllFolderSongs() (map[string][]models.LocalSong, error) {
+	if err := s.ensureScanCacheLoaded(); err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -731,12 +831,7 @@ func (s *LocalLibraryStore) AllFolderSongs() (map[string][]models.LocalSong, err
 		return map[string][]models.LocalSong{models.LocalAllTabID: {}}, nil
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
-		return nil, err
-	}
-
-	s.ensureFolderSongsIndexLocked(folders, cache)
+	s.ensureFolderSongsIndexLocked(folders, s.cache)
 	out := make(map[string][]models.LocalSong, len(s.folderSongsByKey))
 	for key, songs := range s.folderSongsByKey {
 		cloned := make([]models.LocalSong, len(songs))
@@ -750,6 +845,10 @@ func (s *LocalLibraryStore) AllFolderSongs() (map[string][]models.LocalSong, err
 
 // ListCachedForFolder returns cached songs for one tab (models.LocalAllTabID = all folders).
 func (s *LocalLibraryStore) ListCachedForFolder(folderKey string) ([]models.LocalSong, error) {
+	if err := s.ensureScanCacheLoaded(); err != nil {
+		return nil, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -761,12 +860,7 @@ func (s *LocalLibraryStore) ListCachedForFolder(folderKey string) ([]models.Loca
 		return []models.LocalSong{}, nil
 	}
 
-	cache, err := s.readCacheLocked()
-	if err != nil {
-		return nil, err
-	}
-
-	s.ensureFolderSongsIndexLocked(folders, cache)
+	s.ensureFolderSongsIndexLocked(folders, s.cache)
 	songs := s.folderSongsByKey[folderKey]
 	if len(songs) == 0 {
 		return []models.LocalSong{}, nil
@@ -794,7 +888,7 @@ func fileInMusicFolders(filePath string, folders []string) bool {
 	return false
 }
 
-func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile, cacheMu *sync.Mutex) ([]models.LocalSong, map[string]struct{}, error) {
+func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile, coverFiles *coverFileStore, cacheMu *sync.Mutex) ([]models.LocalSong, map[string]struct{}, error) {
 	songs := make([]models.LocalSong, 0)
 	alive := make(map[string]struct{})
 
@@ -839,7 +933,7 @@ func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile,
 			ModTimeUnix: modUnix,
 			Song:        song,
 		}
-		extras.assignSong(absPath, songExtras.CoverData, songExtras.Lyric)
+		persistSongExtra(extras, coverFiles, absPath, songExtras.CoverData, songExtras.Lyric)
 		cacheMu.Unlock()
 		songs = append(songs, song)
 		return nil
@@ -850,7 +944,46 @@ func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile,
 	return songs, alive, nil
 }
 
+func persistSongExtra(extras *localExtrasFile, coverFiles *coverFileStore, path, coverData, lyric string) {
+	if extras == nil {
+		return
+	}
+	coverKey := ""
+	if strings.TrimSpace(coverData) != "" {
+		coverKey = coverKeyForData(coverData)
+		if coverFiles != nil {
+			_ = coverFiles.SaveDataURL(coverKey, coverData)
+		}
+	}
+	extras.assignSongRef(path, coverKey, lyric)
+}
+
+func (s *LocalLibraryStore) resolveCoverValue(coverKey string) string {
+	coverKey = strings.TrimSpace(coverKey)
+	if coverKey == "" {
+		return ""
+	}
+	if s.coverURL != nil {
+		if url := strings.TrimSpace(s.coverURL(coverKey)); url != "" {
+			return url
+		}
+	}
+	if s.coverFiles != nil {
+		if data, err := s.coverFiles.ReadDataURL(coverKey); err == nil && data != "" {
+			return data
+		}
+	}
+	if s.extras != nil {
+		return strings.TrimSpace(s.extras.Covers[coverKey])
+	}
+	return ""
+}
+
 func (s *LocalLibraryStore) GetSongExtras(filePath string) (models.LocalSongExtras, error) {
+	if err := s.ensureExtrasLoaded(); err != nil {
+		return models.LocalSongExtras{}, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -866,29 +999,26 @@ func (s *LocalLibraryStore) GetSongExtras(filePath string) (models.LocalSongExtr
 		return models.LocalSongExtras{}, err
 	}
 
-	extras, err := s.readExtrasLocked()
-	if err != nil {
-		return models.LocalSongExtras{}, err
-	}
-	if _, ok := extras.Entries[abs]; !ok {
+	if _, ok := s.extras.Entries[abs]; !ok {
 		return models.LocalSongExtras{}, nil
 	}
+	entry := s.extras.Entries[abs]
 	return models.LocalSongExtras{
-		CoverData: extras.coverForPath(abs),
-		Lyric:     extras.lyricForPath(abs),
+		CoverData: s.resolveCoverValue(entry.CoverKey),
+		Lyric:     entry.Lyric,
 	}, nil
 }
 
 // GetCovers returns deduplicated cover blobs for the given library file paths.
 func (s *LocalLibraryStore) GetCovers(filePaths []string) (models.LocalCoverBatch, error) {
+	if err := s.ensureExtrasLoaded(); err != nil {
+		return models.LocalCoverBatch{}, err
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	folders, err := s.readFoldersLocked()
-	if err != nil {
-		return models.LocalCoverBatch{}, err
-	}
-	extras, err := s.readExtrasLocked()
 	if err != nil {
 		return models.LocalCoverBatch{}, err
 	}
@@ -907,7 +1037,7 @@ func (s *LocalLibraryStore) GetCovers(filePaths []string) (models.LocalCoverBatc
 			allowed = append(allowed, abs)
 		}
 	}
-	return extras.buildCoverBatch(allowed), nil
+	return s.extras.buildCoverBatch(allowed, s.coverURL, s.coverFiles), nil
 }
 
 func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSongExtras, error) {
@@ -918,12 +1048,13 @@ func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSo
 	artist := "未知艺术家"
 	album := ""
 	coverData := ""
+	durationSec := 0.0
 
 	file, err := os.Open(absPath)
 	if err == nil {
 		defer file.Close()
-		metadata, err := tag.ReadFrom(file)
-		if err == nil {
+		metadata, tagErr := tag.ReadFrom(file)
+		if tagErr == nil {
 			if v := strings.TrimSpace(metadata.Title()); v != "" {
 				title = v
 			}
@@ -941,11 +1072,17 @@ func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSo
 				encoded := base64.StdEncoding.EncodeToString(pic.Data)
 				coverData = fmt.Sprintf("data:%s;base64,%s", mime, encoded)
 			}
+			durationSec = DurationSecondsFromMetadata(metadata)
+		}
+		if durationSec <= 0 {
+			if _, seekErr := file.Seek(0, io.SeekStart); seekErr == nil {
+				durationSec = ProbeAudioDurationFromFile(file, ext, info.Size())
+			}
 		}
 	}
 
 	lyric := readSidecarLyric(absPath)
-	duration := formatTrackDuration(probeAudioDurationSeconds(absPath, ext))
+	duration := formatTrackDuration(durationSec)
 
 	return models.LocalSong{
 			ID:       absPath,
@@ -1038,31 +1175,3 @@ func (s *LocalLibraryStore) ValidateLibraryPath(filePath string) error {
 	return validatePathWithFolders(filePath, folders)
 }
 
-func GetLocalAudioStream(store *LocalLibraryStore, filePath string) (string, error) {
-	if store == nil {
-		return "", fmt.Errorf("local library is not initialized")
-	}
-	if err := store.ValidateLibraryPath(filePath); err != nil {
-		return "", err
-	}
-
-	abs, err := filepath.Abs(strings.TrimSpace(filePath))
-	if err != nil {
-		return "", err
-	}
-
-	file, err := os.Open(abs)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return "", err
-	}
-
-	mime := audioMIME(filepath.Ext(abs))
-	encoded := base64.StdEncoding.EncodeToString(data)
-	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
-}

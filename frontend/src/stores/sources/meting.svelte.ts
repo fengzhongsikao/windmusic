@@ -75,6 +75,10 @@ export function getMetingURL(): string {
   return metingSettings.urls[0];
 }
 
+export function hasMetingSource(): boolean {
+  return metingSettings.urls.length > 0;
+}
+
 export function getActiveMetingURL(): string {
   return getMetingURL();
 }

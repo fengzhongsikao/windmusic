@@ -50,3 +50,13 @@ export function initFavoritesSync(): () => void {
 export function getFavorites(): FavoriteSong[] {
   return favoritesState.items;
 }
+
+/** 从 Go 重新拉取收藏列表（添加/删除后或进入收藏页时调用） */
+export async function refreshFavoritesFromBackend(): Promise<void> {
+  try {
+    const items = await ListFavorites();
+    applyFavorites(items ?? []);
+  } catch {
+    // 保留现有内存状态
+  }
+}

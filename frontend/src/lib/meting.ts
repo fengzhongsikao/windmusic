@@ -4,6 +4,7 @@ export {
   normalizeMetingURL,
   getMetingURLs,
   getMetingURL,
+  hasMetingSource,
   getActiveMetingURL,
   setActiveMetingURL,
   addMetingURL,
@@ -11,4 +12,5 @@ export {
   getMetingPlatform,
   setMetingPlatform,
   metingSourceId,
+  metingSettings,
 } from '@/stores/sources/meting.svelte';

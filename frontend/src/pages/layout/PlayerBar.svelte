@@ -18,7 +18,9 @@
   } from '@/stores/playback/player.svelte';
   import PlayQueuePanel from '@/components/player/PlayQueuePanel.svelte';
   import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
-  import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite } from '@/lib/wailsPlayer';
+  import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite, toFavoriteSong } from '@/lib/wailsPlayer';
+  import { sameFavoriteSong } from '@/lib/favoriteSong';
+  import { favoritesState } from '@/stores/library/favorites.svelte';
   import defaultCover from '@/assets/images/default.jpg';
   import {
     audioCurrentTime,
@@ -48,6 +50,9 @@
   let isFavorite = $state(false);
   let favoritePending = $state(false);
   let favoriteCheckToken = 0;
+  let scrubTime = $state<number | null>(null);
+
+  const displayTime = $derived(scrubTime ?? currentTime);
 
   function togglePlay() {
     togglePlayerPlayback();
@@ -110,6 +115,11 @@
   }
 
   function handleProgressInput(seconds: number) {
+    scrubTime = seconds;
+  }
+
+  function handleProgressChange(seconds: number) {
+    scrubTime = null;
     if (duration <= 0) return;
     seekAudio(seconds);
   }
@@ -120,7 +130,18 @@
 
   $effect(() => {
     const track = player.currentSong;
+    if (favoritesState.loaded) {
+      isFavorite = favoritesState.items.some((item) =>
+        sameFavoriteSong(item, toFavoriteSong(track)),
+      );
+      return;
+    }
     void refreshFavoriteState(track);
+  });
+
+  $effect(() => {
+    player.currentSong.id;
+    scrubTime = null;
   });
 
   onMount(() =>
@@ -269,14 +290,15 @@
     </div>
 
     <div class="progress-section">
-      <span class="time">{formatTime(currentTime)}</span>
+      <span class="time">{formatTime(displayTime)}</span>
       <ProgressSlider
-        value={currentTime}
+        value={displayTime}
         max={duration > 0 ? duration : 1}
         step={0.1}
         disabled={duration <= 0}
         ariaLabel="播放进度"
         oninput={handleProgressInput}
+        onchange={handleProgressChange}
       />
       <span class="time">{formatTime(duration)}</span>
     </div>
@@ -338,8 +360,10 @@
   .bar-bg-cover {
     position: absolute;
     inset: -40% -10% 0;
+    background-color: #16100d;
     background-size: cover;
     background-position: center top;
+    background-repeat: no-repeat;
     filter: blur(48px) saturate(1.2) brightness(0.55);
     pointer-events: none;
     transition: opacity 0.55s ease;
@@ -348,7 +372,7 @@
   .bar-bg-scrim {
     position: absolute;
     inset: 0;
-    background: rgba(22, 16, 13, 0.82);
+    background-color: rgba(22, 16, 13, 0.92);
     backdrop-filter: blur(24px) saturate(1.1);
     -webkit-backdrop-filter: blur(24px) saturate(1.1);
     pointer-events: none;
@@ -588,7 +612,7 @@
     max-width: 500px;
   }
 
-  .progress-section :global(.skeleton-slider) {
+  .progress-section :global(.progress-slider) {
     flex: 1;
     min-width: 0;
   }

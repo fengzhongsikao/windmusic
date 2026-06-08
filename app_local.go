@@ -5,6 +5,37 @@ import (
 	localmusic "windmusic/music/local"
 )
 
+func (a *App) startLocalLibraryScan() {
+	a.localScanMu.Lock()
+	if a.localScanRunning {
+		a.localScanPending = true
+		a.localScanMu.Unlock()
+		return
+	}
+	a.localScanRunning = true
+	a.localScanMu.Unlock()
+
+	go a.runLocalLibraryScan()
+}
+
+func (a *App) runLocalLibraryScan() {
+	a.emitLocalLibraryScanning(true)
+	defer a.emitLocalLibraryScanning(false)
+
+	_, _ = a.local.Scan()
+	a.emitLocalLibrarySnapshot()
+
+	a.localScanMu.Lock()
+	a.localScanRunning = false
+	pending := a.localScanPending
+	a.localScanPending = false
+	a.localScanMu.Unlock()
+
+	if pending {
+		a.startLocalLibraryScan()
+	}
+}
+
 func (a *App) bootstrapLocalLibrary() {
 	a.emitLocalLibrarySnapshot()
 
@@ -16,24 +47,7 @@ func (a *App) bootstrapLocalLibrary() {
 		return
 	}
 
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	if _, err := a.local.Scan(); err != nil {
-		return
-	}
-	a.emitLocalLibrarySnapshot()
-}
-
-func (a *App) scanAndEmitLocalLibrary() error {
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	if _, err := a.local.Scan(); err != nil {
-		return err
-	}
-	a.emitLocalLibrarySnapshot()
-	return nil
+	a.startLocalLibraryScan()
 }
 
 func (a *App) PickLocalMusicFolder() (string, error) {
@@ -44,9 +58,8 @@ func (a *App) PickLocalMusicFolder() (string, error) {
 	if err := a.local.AddFolder(dir); err != nil {
 		return "", err
 	}
-	if err := a.scanAndEmitLocalLibrary(); err != nil {
-		return dir, err
-	}
+	a.emitLocalLibrarySnapshot()
+	a.startLocalLibraryScan()
 	return dir, nil
 }
 
@@ -62,7 +75,8 @@ func (a *App) RemoveLocalMusicFolder(folderPath string) error {
 	if err := a.local.RemoveFolder(folderPath); err != nil {
 		return err
 	}
-	return a.scanAndEmitLocalLibrary()
+	a.emitLocalLibrarySnapshot()
+	return nil
 }
 
 func (a *App) SetLocalFolderAlias(folderPath, alias string) error {
@@ -99,20 +113,13 @@ func (a *App) GetLocalLibraryTracksIndex() (map[string][]models.LocalSong, error
 	return index, nil
 }
 
-func (a *App) ScanLocalLibrary() ([]models.LocalSong, error) {
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
-
-	songs, err := a.local.Scan()
-	if err != nil {
-		return nil, err
-	}
-	a.emitLocalLibrarySnapshot()
-	return songs, nil
+func (a *App) ScanLocalLibrary() error {
+	a.startLocalLibraryScan()
+	return nil
 }
 
 func (a *App) GetLocalAudioStream(filePath string) (string, error) {
-	return localmusic.GetLocalAudioStream(&a.local, filePath)
+	return a.localAudio.StreamURL(filePath)
 }
 
 func (a *App) GetLocalSongExtras(filePath string) (models.LocalSongExtras, error) {

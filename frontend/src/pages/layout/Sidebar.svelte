@@ -8,11 +8,10 @@
   import CreatePlaylistMenu from '@/components/playlist/CreatePlaylistMenu.svelte';
   import {
     deleteUserPlaylist,
-    fetchPlaylists,
-    onPlaylistsChanged,
     playlistActionErrorMessage,
     type UserPlaylist,
   } from '@/lib/playlists';
+  import { playlistsState } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
 
   const menuItems = [
@@ -27,9 +26,10 @@
     { id: 'local', label: '本地音乐', icon: FolderOpen, path: '/local' },
   ];
 
-  let playlists = $state<UserPlaylist[]>([]);
   let deletingId = $state('');
   let pendingDelete = $state<UserPlaylist | null>(null);
+
+  const playlists = $derived(playlistsState.items);
 
   let currentPath = $state(window.location.hash.slice(1) || '/');
 
@@ -56,14 +56,6 @@
     currentPath = path;
   }
 
-  async function loadPlaylists(force = false) {
-    try {
-      playlists = await fetchPlaylists({ force });
-    } catch {
-      playlists = [];
-    }
-  }
-
   function openDeleteDialog(pl: UserPlaylist, e: MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -87,7 +79,6 @@
       if (isPlaylistActive(pl.id)) {
         push('/');
       }
-      await loadPlaylists(true);
     } catch (err) {
       toastError(playlistActionErrorMessage(err, '删除歌单失败'));
     } finally {
@@ -98,13 +89,8 @@
   onMount(() => {
     syncCurrentPath();
     window.addEventListener('hashchange', syncCurrentPath);
-    void loadPlaylists();
-    const stopPlaylists = onPlaylistsChanged(() => {
-      void loadPlaylists(true);
-    });
     return () => {
       window.removeEventListener('hashchange', syncCurrentPath);
-      stopPlaylists();
     };
   });
 </script>
@@ -156,7 +142,7 @@
   <div class="nav-section">
     <div class="section-header">
       <div class="section-title">创建的歌单</div>
-      <CreatePlaylistMenu onCreated={() => void loadPlaylists(true)} />
+      <CreatePlaylistMenu />
     </div>
     {#if playlists.length === 0}
       <p class="playlist-empty">点击右侧 + 创建歌单</p>

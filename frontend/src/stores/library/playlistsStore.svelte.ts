@@ -57,6 +57,21 @@ export function setCachedPlaylist(playlist: UserPlaylist): void {
   playlistDetailCache.set(playlist.id, playlist);
 }
 
+export function deleteCachedPlaylist(id: string): void {
+  playlistDetailCache.delete(id.trim());
+}
+
 export function clearPlaylistDetailCache(): void {
   playlistDetailCache.clear();
+}
+
+/** 从 Go 重新拉取歌单列表（添加歌曲后或进入歌单页时调用） */
+export async function refreshPlaylistsFromBackend(): Promise<void> {
+  try {
+    const items = await ListPlaylists();
+    playlistDetailCache.clear();
+    applyPlaylists(items ?? []);
+  } catch {
+    // 保留现有内存状态
+  }
 }

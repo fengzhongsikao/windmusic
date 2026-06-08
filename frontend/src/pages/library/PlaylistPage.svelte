@@ -20,6 +20,7 @@
   } from '@/lib/playlists';
   import { storedSongToPlayerTrack } from '@/lib/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
+  import { playlistsState, refreshPlaylistsFromBackend } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
 
   interface Props {
@@ -171,16 +172,28 @@
     }
   }
 
-  onMount(() =>
-    onPlaylistsChanged(() => {
+  onMount(() => {
+    void refreshPlaylistsFromBackend();
+    return onPlaylistsChanged(() => {
       void loadPlaylist(true);
-    }),
-  );
+    });
+  });
 
   $effect(() => {
     const id = playlistId;
     if (!id) return;
     void loadPlaylist(true);
+  });
+
+  $effect(() => {
+    const id = playlistId;
+    if (!id) return;
+    playlistsState.items;
+    const synced = playlistsState.items.find((item) => item.id === id);
+    if (!synced) return;
+    if (!playlist || playlist.id !== id || synced.songCount !== playlist.songCount) {
+      playlist = synced;
+    }
   });
 </script>
 
@@ -239,7 +252,10 @@
       <TrackList
         {tracks}
         activeId={currentSongId}
-        isPlaying={player.isPlaying}
+        incremental
+        initialBatch={100}
+        batchSize={100}
+        listId={playlistId}
         {brokenCovers}
         onSelect={playTrack}
         onCoverError={handleCoverError}

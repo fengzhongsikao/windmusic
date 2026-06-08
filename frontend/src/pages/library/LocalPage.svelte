@@ -20,6 +20,11 @@
     scanLocalLibrary,
     setLocalActiveFolderTab,
   } from '@/stores/library/localLibrary.svelte';
+  import {
+    LOCAL_SORT_OPTIONS,
+    sortLocalTracks,
+    type LocalSortOption,
+  } from '@/lib/localTrackSort';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { audioLoading } from '@/stores/playback/audioEngine';
   import { error as toastError } from '@/stores/ui/toast';
@@ -30,6 +35,7 @@
   let renameDraft = $state('');
   let savingAlias = $state(false);
   let activeFolderTab = $state(LOCAL_ALL_TAB_ID);
+  let trackSort = $state<LocalSortOption>('title-asc');
 
   const folderAliases = $derived(localLibrary.folderAliases);
   const tracksIndexLoading = $derived(localLibrary.tracksIndexLoading);
@@ -53,7 +59,16 @@
     return tabs;
   });
 
-  const activeTracks = $derived(localLibrary.tracksByTab[activeFolderTab] ?? []);
+  const activeTracks = $derived(
+    sortLocalTracks(localLibrary.tracksByTab[activeFolderTab] ?? [], trackSort),
+  );
+  const showSortControl = $derived(
+    localLibrary.tracksIndexReady &&
+      (localLibrary.tracksByTab[activeFolderTab] ?? []).length > 0,
+  );
+  const activeTabMeta = $derived.by(
+    () => folderTabs.find((tab) => tab.id === activeFolderTab) ?? folderTabs[0],
+  );
   const isLoadingAudio = $derived($audioLoading);
 
   $effect(() => {
@@ -322,40 +337,49 @@
   <div class="song-section">
     <div class="song-section-header">
       <h3 class="sub-title">本地歌曲</h3>
-      {#if folderTabs.length > 1}
-        <div class="folder-tab-group" role="tablist" aria-label="按文件夹筛选">
-          {#each folderTabs as tab (tab.id)}
-            <button
-              type="button"
-              class="folder-tab"
-              class:active={activeFolderTab === tab.id}
-              role="tab"
-              aria-selected={activeFolderTab === tab.id}
-              onclick={() => selectFolderTab(tab.id)}
-            >
-              <span class="folder-tab-label">{tab.label}</span>
-              <span class="folder-tab-count">{tab.count}</span>
-            </button>
-          {/each}
-        </div>
-      {/if}
+      <div class="song-section-toolbar">
+        {#if showSortControl}
+          <label class="sort-control">
+            <span class="sort-label">排序</span>
+            <select class="sort-select" bind:value={trackSort} aria-label="本地歌曲排序">
+              {#each LOCAL_SORT_OPTIONS as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        {#if folderTabs.length > 1}
+          <div class="folder-tab-group" role="tablist" aria-label="按文件夹筛选">
+            {#each folderTabs as tab (tab.id)}
+              <button
+                type="button"
+                class="folder-tab"
+                class:active={activeFolderTab === tab.id}
+                role="tab"
+                aria-selected={activeFolderTab === tab.id}
+                onclick={() => selectFolderTab(tab.id)}
+              >
+                <span class="folder-tab-label">{tab.label}</span>
+                <span class="folder-tab-count">{tab.count}</span>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </div>
     </div>
 
     {#if (scanning || loading || tracksIndexLoading) && !localLibrary.tracksIndexReady}
       <p class="empty-hint">
         {scanning ? '正在扫描音乐文件…' : tracksIndexLoading ? '正在加载歌曲…' : '正在加载…'}
       </p>
-    {:else}
-      <div class="folder-track-panels">
-        {#each folderTabs as tab (tab.id)}
-          <LocalFolderTrackPanel
-            tabId={tab.id}
-            tabLabel={tab.label}
-            visible={activeFolderTab === tab.id}
-            onSelect={handleSelect}
-          />
-        {/each}
-      </div>
+    {:else if activeTabMeta}
+      <LocalFolderTrackPanel
+        tabId={activeTabMeta.id}
+        tabLabel={activeTabMeta.label}
+        tracks={activeTracks}
+        sortKey={trackSort}
+        onSelect={handleSelect}
+      />
     {/if}
   </div>
 </div>
@@ -595,13 +619,57 @@
     flex-wrap: wrap;
   }
 
+  .song-section-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    margin-left: auto;
+  }
+
+  .sort-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #666;
+  }
+
+  .sort-label {
+    white-space: nowrap;
+  }
+
+  .sort-select {
+    padding: 6px 28px 6px 10px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #fff;
+    color: #333;
+    font-size: 13px;
+    cursor: pointer;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+
+  .sort-select:hover {
+    border-color: #c7d2fe;
+  }
+
+  .sort-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+  }
+
   .folder-tab-group {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
     justify-content: flex-end;
-    margin-left: auto;
   }
 
   .folder-tab {
@@ -639,11 +707,6 @@
 
   .folder-tab.active .folder-tab-count {
     opacity: 0.95;
-  }
-
-  .folder-track-panels {
-    position: relative;
-    min-height: 120px;
   }
 
   .song-section :global(.track-list) {

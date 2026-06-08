@@ -12,8 +12,11 @@ import (
 )
 
 type FavoritesStore struct {
-	path string
-	mu   sync.Mutex
+	path   string
+	mu     sync.Mutex
+	loaded bool
+	items  []models.FavoriteSong
+	flush  flushScheduler
 }
 
 func (s *FavoritesStore) List() ([]models.FavoriteSong, error) {
@@ -42,34 +45,36 @@ func (s *FavoritesStore) Add(song models.FavoriteSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	favorites, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
-	for _, item := range favorites {
+	for _, item := range s.items {
 		if sameFavoriteSong(item, song) {
 			return nil
 		}
 	}
-	favorites = append(favorites, normalizeFavoriteSong(song))
-	return s.writeLocked(favorites)
+	s.items = append(s.items, normalizeFavoriteSong(song))
+	s.items = dedupeFavorites(s.items)
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *FavoritesStore) Remove(song models.FavoriteSong) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	favorites, err := s.readLocked()
-	if err != nil {
+	if err := s.ensureLoadedLocked(); err != nil {
 		return err
 	}
-	next := make([]models.FavoriteSong, 0, len(favorites))
-	for _, item := range favorites {
+	next := make([]models.FavoriteSong, 0, len(s.items))
+	for _, item := range s.items {
 		if !sameFavoriteSong(item, song) {
 			next = append(next, item)
 		}
 	}
-	return s.writeLocked(next)
+	s.items = next
+	s.queueFlushLocked()
+	return nil
 }
 
 func (s *FavoritesStore) ensurePathLocked() (string, error) {
@@ -84,7 +89,29 @@ func (s *FavoritesStore) ensurePathLocked() (string, error) {
 	return s.path, nil
 }
 
+func (s *FavoritesStore) ensureLoadedLocked() error {
+	if s.loaded {
+		return nil
+	}
+	items, err := s.readDiskLocked()
+	if err != nil {
+		return err
+	}
+	s.items = items
+	s.loaded = true
+	return nil
+}
+
 func (s *FavoritesStore) readLocked() ([]models.FavoriteSong, error) {
+	if err := s.ensureLoadedLocked(); err != nil {
+		return nil, err
+	}
+	out := make([]models.FavoriteSong, len(s.items))
+	copy(out, s.items)
+	return out, nil
+}
+
+func (s *FavoritesStore) readDiskLocked() ([]models.FavoriteSong, error) {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return nil, err
@@ -121,7 +148,20 @@ func dedupeFavorites(favorites []models.FavoriteSong) []models.FavoriteSong {
 	return normalized
 }
 
-func (s *FavoritesStore) writeLocked(favorites []models.FavoriteSong) error {
+func (s *FavoritesStore) queueFlushLocked() {
+	s.flush.schedule(s.flushToDisk)
+}
+
+func (s *FavoritesStore) flushToDisk() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.loaded {
+		return nil
+	}
+	return s.writeDiskLocked(s.items)
+}
+
+func (s *FavoritesStore) writeDiskLocked(favorites []models.FavoriteSong) error {
 	path, err := s.ensurePathLocked()
 	if err != nil {
 		return err

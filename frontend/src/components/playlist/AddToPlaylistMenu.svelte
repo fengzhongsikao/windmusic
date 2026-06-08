@@ -7,14 +7,12 @@
   import PlaylistCreateFields from '@/components/playlist/PlaylistCreateFields.svelte';
   import {
     addSongToPlaylist,
-    fetchPlaylists,
-    onPlaylistsChanged,
     playlistActionErrorMessage,
     playlistContainsSong,
-    type UserPlaylist,
   } from '@/lib/playlists';
   import { toFavoriteSong } from '@/lib/wailsPlayer';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
+  import { playlistsState } from '@/stores/library/playlistsStore.svelte';
   import { success, error as toastError } from '@/stores/ui/toast';
 
   interface Props {
@@ -33,26 +31,15 @@
     placement = 'top-end',
   }: Props = $props();
 
-  let playlists = $state<UserPlaylist[]>([]);
-  let loading = $state(false);
   let addingId = $state('');
   let menuOpen = $state(false);
   let createFields = $state<PlaylistCreateFields | null>(null);
 
+  const playlists = $derived(playlistsState.items);
+  const loading = $derived(!playlistsState.loaded);
   const song = $derived(toFavoriteSong(track));
   const hasPlayableTrack = $derived(Boolean(track.title?.trim()));
   const playlistCount = $derived(playlists.length);
-
-  async function loadPlaylists(force = false) {
-    loading = true;
-    try {
-      playlists = await fetchPlaylists({ force });
-    } catch {
-      playlists = [];
-    } finally {
-      loading = false;
-    }
-  }
 
   function closeMenu() {
     menuOpen = false;
@@ -67,7 +54,6 @@
       const pl = playlists.find((item) => item.id === playlistId);
       success(pl ? `已添加到「${pl.name}」` : '已添加到歌单');
       closeMenu();
-      void loadPlaylists(true);
     } catch (err) {
       toastError(playlistActionErrorMessage(err, '添加失败'));
     } finally {
@@ -83,25 +69,14 @@
 
   function handleOpenChange(details: { open: boolean }) {
     menuOpen = details.open;
-    if (details.open) {
-      void loadPlaylists(true);
-    } else {
+    if (!details.open) {
       createFields?.reset();
     }
   }
 
   function handlePlaylistCreated() {
-    createFields?.reset();
-    void loadPlaylists(true);
+    closeMenu();
   }
-
-  $effect(() => {
-    return onPlaylistsChanged(() => {
-      if (menuOpen) {
-        void loadPlaylists(true);
-      }
-    });
-  });
 </script>
 
 <Menu

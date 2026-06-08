@@ -25,9 +25,13 @@ import {
   sameFavoriteSong,
   type FavoriteSong,
 } from '@/lib/favoriteSong';
-import { getFavorites } from '@/stores/library/favorites.svelte';
+import {
+  getFavorites,
+  refreshFavoritesFromBackend,
+} from '@/stores/library/favorites.svelte';
 import { FAVORITES_UPDATED_EVENT } from '@/stores/library/favorites.svelte';
 import { RECENT_UPDATED_EVENT } from '@/stores/library/recent.svelte';
+import { trackPlaybackKey } from '@/stores/playback/lyrics';
 import { EventsOn } from '../../wailsjs/runtime/runtime';
 
 export type SongItem = music.SongItem;
@@ -71,12 +75,33 @@ export async function resolveReadySourceId(): Promise<string> {
 }
 
 /** 通过音源获取封面 URL（网络或本地路径，由 Go 端返回） */
+const coverUrlInflight = new Map<string, Promise<string>>();
+
 export async function fetchCoverUrl(track: PlayerTrack): Promise<string> {
   const existing = track.coverUrl?.trim();
   if (existing) {
     return existing;
   }
 
+  const ctx = track.playback;
+  if (!ctx) {
+    return defaultCover;
+  }
+
+  const cacheKey = trackPlaybackKey(track);
+  const inflight = coverUrlInflight.get(cacheKey);
+  if (inflight) {
+    return inflight;
+  }
+
+  const promise = fetchCoverUrlUncached(track).finally(() => {
+    coverUrlInflight.delete(cacheKey);
+  });
+  coverUrlInflight.set(cacheKey, promise);
+  return promise;
+}
+
+async function fetchCoverUrlUncached(track: PlayerTrack): Promise<string> {
   const ctx = track.playback;
   if (!ctx) {
     return defaultCover;
@@ -138,6 +163,19 @@ function albumAndDurationFromTrack(track: PlayerTrack): { album: string; duratio
   return { album, duration };
 }
 
+function shouldOmitStoredCoverUrl(track: PlayerTrack): boolean {
+  const ctx = track.playback;
+  if (isLocalStoredSong({ platform: ctx?.platform, sourceId: ctx?.sourceId })) {
+    return true;
+  }
+  const url = track.coverUrl?.trim() ?? '';
+  return (
+    url.startsWith('data:') ||
+    /^https?:\/\/127\.0\.0\.1(?::\d+)?/i.test(url) ||
+    /^https?:\/\/localhost(?::\d+)?/i.test(url)
+  );
+}
+
 export function toFavoriteSong(track: PlayerTrack): FavoriteSong {
   const { album, duration } = albumAndDurationFromTrack(track);
   return {
@@ -146,7 +184,7 @@ export function toFavoriteSong(track: PlayerTrack): FavoriteSong {
     artist: track.artist ?? '',
     album,
     duration,
-    coverUrl: track.coverUrl ?? '',
+    coverUrl: shouldOmitStoredCoverUrl(track) ? '' : (track.coverUrl ?? ''),
     sourceId: track.playback?.sourceId ?? '',
     platform: track.playback?.platform ?? '',
     metaJson: track.playback?.metaJson ?? '',
@@ -192,10 +230,12 @@ export async function checkTrackFavorite(track: PlayerTrack): Promise<boolean> {
 
 export async function addTrackFavorite(track: PlayerTrack): Promise<void> {
   await AddFavorite(toWailsFavoriteSong(toFavoriteSong(track)));
+  await refreshFavoritesFromBackend();
 }
 
 export async function removeTrackFavorite(track: PlayerTrack): Promise<void> {
   await RemoveFavorite(toWailsFavoriteSong(toFavoriteSong(track)));
+  await refreshFavoritesFromBackend();
 }
 
 export function toRecentSong(track: PlayerTrack): import('@/lib/recentSong').RecentSong {

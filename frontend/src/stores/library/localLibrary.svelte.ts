@@ -108,9 +108,37 @@ function yieldToMain(): Promise<void> {
   });
 }
 
+function collectPathsForTab(tabId: string): string[] {
+  const tracks = localLibrary.tracksByTab[tabId] ?? [];
+  const paths: string[] = [];
+  for (const track of tracks) {
+    const path = String(track.listKey ?? track.id).trim();
+    if (path) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function orderedCoverPreloadPaths(): string[] {
+  const activePaths = collectPathsForTab(activeTabId);
+  const seen = new Set(activePaths);
+  const ordered = [...activePaths];
+  for (const path of collectUniqueLibraryPaths()) {
+    if (!seen.has(path)) {
+      seen.add(path);
+      ordered.push(path);
+    }
+  }
+  return ordered;
+}
+
 /** 曲目索引就绪后，在空闲时把封面批量写入 store（内存缓存，切 Tab 不重拉） */
 function scheduleCoverPreloadAll() {
-  const paths = collectUniqueLibraryPaths();
+  if (!localPageActive) {
+    return;
+  }
+  const paths = orderedCoverPreloadPaths();
   if (paths.length === 0) {
     return;
   }
@@ -121,6 +149,9 @@ function scheduleCoverPreloadAll() {
       if (coverLoadToken !== token) {
         return;
       }
+      if (!localPageActive) {
+        return;
+      }
       await loadCoversForPaths(paths.slice(i, i + COVER_CHUNK));
       await yieldToMain();
     }
@@ -129,12 +160,27 @@ function scheduleCoverPreloadAll() {
   const start = () => void run();
   // 曲目列表先稳定，再在空闲时灌封面，避免和 Tab 点击抢主线程
   setTimeout(() => {
+    if (!localPageActive) {
+      return;
+    }
     if (typeof requestIdleCallback !== 'undefined') {
       requestIdleCallback(start, { timeout: 4000 });
     } else {
       start();
     }
   }, 600);
+}
+
+/** 进入本地页或索引刚就绪时：先拉当前 Tab 可见封面，再后台预加载其余 */
+function ensureCoversForCurrentView() {
+  if (!localPageActive || !localLibrary.tracksIndexReady) {
+    return;
+  }
+  const paths = collectPathsForTab(activeTabId).slice(0, COVER_CHUNK * 2);
+  if (paths.length > 0) {
+    void loadCoversForPaths(paths);
+  }
+  scheduleCoverPreloadAll();
 }
 
 function clearCoverCache() {
@@ -161,13 +207,25 @@ export const localLibrary = $state({
 
 export function setLocalPageActive(active: boolean): void {
   localPageActive = active;
-  if (active && localLibrary.loaded && !localLibrary.tracksIndexReady) {
-    void loadTracksIndex();
+  if (!active) {
+    return;
   }
+  if (localLibrary.loaded && !localLibrary.tracksIndexReady) {
+    void loadTracksIndex();
+    return;
+  }
+  ensureCoversForCurrentView();
 }
 
 export function setLocalActiveFolderTab(tabId: string): void {
   activeTabId = tabId;
+  if (!localPageActive || !localLibrary.tracksIndexReady) {
+    return;
+  }
+  const paths = collectPathsForTab(tabId).slice(0, COVER_CHUNK * 2);
+  if (paths.length > 0) {
+    void loadCoversForPaths(paths);
+  }
 }
 
 function snapshotMetaKey(snapshot: LocalLibrarySnapshot): string {
@@ -213,6 +271,7 @@ function applyTracksIndex(index: Record<string, LocalSong[]>) {
 
 function invalidateTracksIndex() {
   tracksIndexToken += 1;
+  localLibrary.tracksIndexLoading = false;
   localLibrary.tracksByTab = {};
   localLibrary.songById = new Map();
   localLibrary.tracksIndexReady = false;
@@ -247,17 +306,25 @@ function applySnapshot(snapshot: LocalLibrarySnapshot) {
   }
 }
 
+function tracksIndexHasSongs(): boolean {
+  return Object.values(localLibrary.tracksByTab).some((tracks) => tracks.length > 0);
+}
+
+function snapshotCountsHaveSongs(): boolean {
+  return Object.values(localLibrary.folderCounts).some((count) => count > 0);
+}
+
 /** 一次 IPC 拉取后端按文件夹分好的曲目索引（与扫描结构一致） */
 export async function loadTracksIndex(): Promise<void> {
-  if (localLibrary.tracksIndexLoading) {
-    return;
-  }
-  if (localLibrary.tracksIndexReady && Object.keys(localLibrary.tracksByTab).length > 0) {
+  if (
+    localLibrary.tracksIndexReady &&
+    (tracksIndexHasSongs() || !snapshotCountsHaveSongs())
+  ) {
+    ensureCoversForCurrentView();
     return;
   }
 
-  const token = tracksIndexToken + 1;
-  tracksIndexToken = token;
+  const token = ++tracksIndexToken;
   localLibrary.tracksIndexLoading = true;
 
   try {
@@ -266,7 +333,7 @@ export async function loadTracksIndex(): Promise<void> {
       return;
     }
     applyTracksIndex(index ?? {});
-    scheduleCoverPreloadAll();
+    ensureCoversForCurrentView();
   } catch {
     if (tracksIndexToken === token) {
       invalidateTracksIndex();

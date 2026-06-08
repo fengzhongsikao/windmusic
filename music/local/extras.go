@@ -44,6 +44,18 @@ func coverKeyForData(coverData string) string {
 	return hex.EncodeToString(sum[:12])
 }
 
+func (e *localExtrasFile) assignSongRef(path, coverKey, lyric string) {
+	e.ensureMaps()
+	if coverKey == "" && lyric == "" {
+		delete(e.Entries, path)
+		return
+	}
+	e.Entries[path] = localSongExtraRef{
+		CoverKey: strings.TrimSpace(coverKey),
+		Lyric:    lyric,
+	}
+}
+
 func (e *localExtrasFile) assignSong(path, coverData, lyric string) {
 	e.ensureMaps()
 	if coverData == "" && lyric == "" {
@@ -123,7 +135,7 @@ func (e *localExtrasFile) pruneUnusedCovers() {
 	}
 }
 
-func (e *localExtrasFile) buildCoverBatch(paths []string) models.LocalCoverBatch {
+func (e *localExtrasFile) buildCoverBatch(paths []string, urlForKey func(string) string, files *coverFileStore) models.LocalCoverBatch {
 	batch := models.LocalCoverBatch{
 		Covers: make(map[string]string),
 		Paths:  make(map[string]string, len(paths)),
@@ -133,8 +145,27 @@ func (e *localExtrasFile) buildCoverBatch(paths []string) models.LocalCoverBatch
 		if path == "" {
 			continue
 		}
-		key, cover := e.coverKeyAndData(path)
-		if key == "" || cover == "" {
+		entry, ok := e.Entries[path]
+		if !ok {
+			continue
+		}
+		key := strings.TrimSpace(entry.CoverKey)
+		if key == "" {
+			continue
+		}
+		cover := ""
+		if urlForKey != nil {
+			cover = strings.TrimSpace(urlForKey(key))
+		}
+		if cover == "" && files != nil {
+			if data, err := files.ReadDataURL(key); err == nil {
+				cover = data
+			}
+		}
+		if cover == "" {
+			cover = strings.TrimSpace(e.Covers[key])
+		}
+		if cover == "" {
 			continue
 		}
 		batch.Covers[key] = cover
