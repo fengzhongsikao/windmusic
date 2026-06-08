@@ -20,7 +20,14 @@
   import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
   import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite, toFavoriteSong } from '@/lib/wails/wailsPlayer';
   import { sameFavoriteSong } from '@/lib/library/favoriteSong';
+  import {
+    coverLookupKeys,
+    fetchLocalSongCovers,
+    localPathFromPlayerTrack,
+    resolveCoverFromMaps,
+  } from '@/lib/library/localMusic';
   import { favoritesState } from '@/stores/library/favorites.svelte';
+  import { localLibrary } from '@/stores/library/localLibrary.svelte';
   import defaultCover from '@/assets/images/default.jpg';
   import {
     audioCurrentTime,
@@ -34,8 +41,9 @@
 
   /** 仅打开详情页时切换沉浸式配色，单纯播放不变 */
   let barImmersive = $derived(player.viewMode === 'immersive');
-  let coverSrc = $derived(player.currentSong.coverUrl?.trim() || defaultCover);
-  let displayedCover = $state(defaultCover);
+  let barCoverByPath = $state<Record<string, string>>({});
+  let displayedCover = $state('');
+  const hasBarCover = $derived(displayedCover !== '' && displayedCover !== defaultCover);
 
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
@@ -151,23 +159,55 @@
   );
 
   $effect(() => {
-    const target = coverSrc;
-    if (!barImmersive) {
+    const track = player.currentSong;
+    const path = localPathFromPlayerTrack(track);
+
+    if (path && !barCoverByPath[path] && !localLibrary.coverByPath[path]) {
+      void fetchLocalSongCovers([path]).then((batch) => {
+        let added = false;
+        for (const [filePath, key] of Object.entries(batch.paths)) {
+          const cover = batch.covers[key]?.trim();
+          if (cover && !barCoverByPath[filePath]) {
+            barCoverByPath[filePath] = cover;
+            added = true;
+          }
+        }
+        if (added) {
+          barCoverByPath = { ...barCoverByPath };
+        }
+      });
+    }
+
+    const sync = resolveCoverFromMaps(track.coverUrl, coverLookupKeys(path, track.id), [
+      barCoverByPath,
+      localLibrary.coverByPath,
+    ]);
+    if (sync) {
+      displayedCover = sync;
       return;
     }
 
     let cancelled = false;
+    displayedCover = '';
+
     void (async () => {
-      const resolved =
-        !target || target === defaultCover ? await fetchCoverUrl(player.currentSong) : target;
+      const resolved = await fetchCoverUrl(track);
       if (cancelled) return;
+      if (!resolved || resolved === defaultCover) {
+        return;
+      }
 
       const img = new Image();
       img.onload = () => {
-        if (!cancelled) displayedCover = resolved;
+        if (!cancelled) {
+          displayedCover = resolved;
+          if (path && !barCoverByPath[path]) {
+            barCoverByPath = { ...barCoverByPath, [path]: resolved };
+          }
+        }
       };
       img.onerror = () => {
-        if (!cancelled) displayedCover = defaultCover;
+        if (!cancelled) displayedCover = '';
       };
       img.src = resolved;
     })();
@@ -190,7 +230,7 @@
   {#if barImmersive}
     <div
       class="bar-bg-cover"
-      style:background-image="url('{displayedCover}')"
+      style:background-image="url('{displayedCover || defaultCover}')"
       aria-hidden="true"
     ></div>
     <div class="bar-bg-scrim" aria-hidden="true"></div>
@@ -205,8 +245,8 @@
       title="查看歌曲详情与歌词"
       aria-label="查看歌曲详情与歌词"
     >
-      {#if player.currentSong.coverUrl?.trim()}
-        <img src={player.currentSong.coverUrl} alt="" class="song-cover-img" />
+      {#if hasBarCover}
+        <img src={displayedCover} alt="" class="song-cover-img" />
       {:else}
         <Music size={24} />
       {/if}

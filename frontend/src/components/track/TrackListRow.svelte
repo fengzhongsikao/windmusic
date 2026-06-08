@@ -51,18 +51,35 @@
   const filePath = $derived(rowKey);
 
   const coverUrl = $derived.by(() => {
-    if (localCovers && loadCovers) {
-      const fromStore = localLibrary.coverByPath[filePath]?.trim();
-      if (fromStore) {
-        return fromStore;
-      }
-    } else if (coverByPath) {
-      const fromMap = coverByPath[filePath]?.trim();
-      if (fromMap) {
-        return fromMap;
+    const direct = track.coverUrl?.trim();
+    if (direct) {
+      return direct;
+    }
+    if (!loadCovers) {
+      return '';
+    }
+
+    const lookupKeys = [filePath, String(track.id).trim()].filter(
+      (key, index, keys) => key && keys.indexOf(key) === index,
+    );
+
+    if (coverByPath) {
+      for (const key of lookupKeys) {
+        const fromMap = coverByPath[key]?.trim();
+        if (fromMap) {
+          return fromMap;
+        }
       }
     }
-    return track.coverUrl?.trim() ?? '';
+    if (localCovers || coverByPath) {
+      for (const key of lookupKeys) {
+        const fromStore = localLibrary.coverByPath[key]?.trim();
+        if (fromStore) {
+          return fromStore;
+        }
+      }
+    }
+    return '';
   });
 
   const hasCover = $derived(coverUrl !== '' && !brokenCovers[coverUrl]);

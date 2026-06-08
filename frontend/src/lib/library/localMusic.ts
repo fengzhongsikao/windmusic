@@ -135,6 +135,51 @@ export function localPathFromStoredSong(song: StoredPlaybackSong): string {
   return localPathFromMetaJson(song.metaJson) || song.id?.trim() || '';
 }
 
+export function localPathFromPlayerTrack(track: {
+  id?: string | number;
+  playback?: { sourceId?: string; platform?: string; metaJson?: string; localPath?: string };
+}): string {
+  const localPath = track.playback?.localPath?.trim() ?? '';
+  if (localPath) {
+    return localPath;
+  }
+  return localPathFromStoredSong({
+    id: String(track.id ?? ''),
+    sourceId: track.playback?.sourceId,
+    platform: track.playback?.platform,
+    metaJson: track.playback?.metaJson,
+  });
+}
+
+export function resolveCoverFromMaps(
+  coverUrl: string | undefined,
+  lookupKeys: string[],
+  maps: Array<Record<string, string> | undefined>,
+): string {
+  const direct = coverUrl?.trim();
+  if (direct) {
+    return direct;
+  }
+  for (const map of maps) {
+    if (!map) {
+      continue;
+    }
+    for (const key of lookupKeys) {
+      const cover = map[key]?.trim();
+      if (cover) {
+        return cover;
+      }
+    }
+  }
+  return '';
+}
+
+export function coverLookupKeys(path: string, id?: string | number): string[] {
+  return [path, String(id ?? '').trim()].filter(
+    (key, index, keys) => key && keys.indexOf(key) === index,
+  );
+}
+
 /** 从收藏/最近播放/歌单等持久化记录还原播放上下文 */
 export function buildPlaybackContextFromStored(song: StoredPlaybackSong): PlaybackContext | undefined {
   const sourceId = song.sourceId?.trim() ?? '';

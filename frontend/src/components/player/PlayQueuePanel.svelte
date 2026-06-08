@@ -5,6 +5,13 @@
   import { ListMusic, Music, Play, Trash2 } from '@lucide/svelte';
   import { Menu, Portal } from '@skeletonlabs/skeleton-svelte';
   import {
+    coverLookupKeys,
+    fetchLocalSongCovers,
+    localPathFromPlayerTrack,
+    resolveCoverFromMaps,
+  } from '@/lib/library/localMusic';
+  import { localLibrary } from '@/stores/library/localLibrary.svelte';
+  import {
     player,
     isCurrentTrack,
     playQueueTrack,
@@ -21,8 +28,44 @@
   let { immersive = false }: Props = $props();
 
   let brokenCovers = $state<Record<string, true>>({});
+  let coverByPath = $state<Record<string, string>>({});
 
   const queueCount = $derived(player.queue.length);
+
+  function resolveQueueCover(track: PlayerTrack): string {
+    const path = localPathFromPlayerTrack(track);
+    return resolveCoverFromMaps(track.coverUrl, coverLookupKeys(path, track.id), [
+      coverByPath,
+      localLibrary.coverByPath,
+    ]);
+  }
+
+  $effect(() => {
+    const paths = [
+      ...new Set(
+        player.queue
+          .map((track) => localPathFromPlayerTrack(track))
+          .filter((path) => path && !coverByPath[path]),
+      ),
+    ];
+    if (paths.length === 0) {
+      return;
+    }
+
+    void fetchLocalSongCovers(paths).then((batch) => {
+      let added = false;
+      for (const [path, key] of Object.entries(batch.paths)) {
+        const cover = batch.covers[key]?.trim();
+        if (cover && !coverByPath[path]) {
+          coverByPath[path] = cover;
+          added = true;
+        }
+      }
+      if (added) {
+        coverByPath = { ...coverByPath };
+      }
+    });
+  });
 
   function trackKey(track: PlayerTrack, index: number): string {
     return [
@@ -107,7 +150,7 @@
           {:else}
             {#each player.queue as track, index (trackKey(track, index))}
               {@const active = isCurrentTrack(track)}
-              {@const coverUrl = track.coverUrl?.trim() ?? ''}
+              {@const coverUrl = resolveQueueCover(track)}
               <Menu.Item
                 value={`play:${index}`}
                 closeOnSelect={false}

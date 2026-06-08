@@ -227,15 +227,16 @@
     }
 
     void fetchLocalSongCovers(paths).then((batch) => {
-      const updates: Record<string, string> = {};
+      let added = false;
       for (const [path, key] of Object.entries(batch.paths)) {
-        const cover = batch.covers[key];
+        const cover = batch.covers[key]?.trim();
         if (cover && !coverByPath[path]) {
-          updates[path] = cover;
+          coverByPath[path] = cover;
+          added = true;
         }
       }
-      if (Object.keys(updates).length > 0) {
-        coverByPath = { ...coverByPath, ...updates };
+      if (added) {
+        coverByPath = { ...coverByPath };
       }
     });
   });
@@ -301,6 +302,7 @@
         batchSize={100}
         listId={playlistId}
         {brokenCovers}
+        {coverByPath}
         onSelect={playTrack}
         onCoverError={handleCoverError}
         ariaLabel={`${playlist.name} 歌曲列表`}
