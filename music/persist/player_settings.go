@@ -18,18 +18,32 @@ type PlayerSettingsStore struct {
 
 func DefaultPlayerSettings() models.PlayerSettings {
 	return models.PlayerSettings{
-		Volume:         30,
-		Muted:          false,
-		RepeatMode:     "off",
-		Shuffled:       false,
-		WaveformSpread: "center-out",
+		Volume:           30,
+		Muted:            false,
+		RepeatMode:       "off",
+		Shuffled:         false,
+		WaveformSpread:   "center-out",
+		DetailHideLyrics: false,
+		DetailHideVisual: false,
+		DetailCoverShape:    "round",
+		DetailCoverSpin:     true,
+		DetailHidePlayerBar: false,
+	}
+}
+
+func normalizeDetailCoverShape(value string) string {
+	switch strings.TrimSpace(value) {
+	case "square":
+		return "square"
+	default:
+		return "round"
 	}
 }
 
 func normalizeWaveformSpread(value string) string {
 	switch strings.TrimSpace(value) {
-	case "edges-in", "right-left":
-		return strings.TrimSpace(value)
+	case "right-left":
+		return "right-left"
 	default:
 		return "center-out"
 	}
@@ -47,12 +61,22 @@ func normalizePlayerSettings(settings models.PlayerSettings) models.PlayerSettin
 	if repeatMode != "all" && repeatMode != "one" {
 		repeatMode = "off"
 	}
+	hideLyrics := settings.DetailHideLyrics
+	hideVisual := settings.DetailHideVisual
+	if hideLyrics && hideVisual {
+		hideVisual = false
+	}
 	return models.PlayerSettings{
-		Volume:         volume,
-		Muted:          settings.Muted,
-		RepeatMode:     repeatMode,
-		Shuffled:       settings.Shuffled,
-		WaveformSpread: normalizeWaveformSpread(settings.WaveformSpread),
+		Volume:           volume,
+		Muted:            settings.Muted,
+		RepeatMode:       repeatMode,
+		Shuffled:         settings.Shuffled,
+		WaveformSpread:   normalizeWaveformSpread(settings.WaveformSpread),
+		DetailHideLyrics: hideLyrics,
+		DetailHideVisual: hideVisual,
+		DetailCoverShape:    normalizeDetailCoverShape(settings.DetailCoverShape),
+		DetailCoverSpin:     settings.DetailCoverSpin,
+		DetailHidePlayerBar: settings.DetailHidePlayerBar,
 	}
 }
 
@@ -90,7 +114,20 @@ func (s *PlayerSettingsStore) Get() (models.PlayerSettings, error) {
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return models.PlayerSettings{}, err
 	}
-	return normalizePlayerSettings(settings), nil
+	settings = normalizePlayerSettings(settings)
+	settings.DetailCoverSpin = normalizeDetailCoverSpin(data, settings.DetailCoverSpin)
+	return settings, nil
+}
+
+func normalizeDetailCoverSpin(raw []byte, value bool) bool {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return value
+	}
+	if _, ok := fields["detailCoverSpin"]; !ok {
+		return true
+	}
+	return value
 }
 
 func (s *PlayerSettingsStore) Save(settings models.PlayerSettings) error {

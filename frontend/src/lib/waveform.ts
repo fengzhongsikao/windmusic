@@ -139,50 +139,77 @@ function samplePeakAt(peaks: Float32Array, index: number, sharp = false): number
 }
 
 export interface SamplePeaksOptions {
-  /** 围绕此刻播放点采样的时间窗（秒），越小越像原地起伏的海浪 */
+  /** 以当前播放点为中心，左右各展示的时间窗（秒） */
   localWindowSec?: number;
-  /** 播放中：叠加轻微多频起伏（仍由真实峰值驱动） */
   live?: boolean;
   phaseMs?: number;
   spreadMode?: WaveformSpreadMode;
 }
 
-function spreadRipple(
-  mode: WaveformSpreadMode,
-  t: number,
-  dist: number,
-  pos: number,
-  barIndex: number,
-  bandJitter: number,
-  seedS2: number,
-  seedS3: number,
-): number {
-  const barPhase = barIndex * 0.42 + seedS2 * Math.PI * 2;
+interface SpreadContext {
+  t: number;
+  dist: number;
+  skew: number;
+  barPhase: number;
+  seedS1: number;
+  seedS3: number;
+}
+
+/** 海浪式起伏：多频率、每柱独立相位，无横向时间轴漂移。 */
+function spreadMotionCenterOut(ctx: SpreadContext): number {
+  const { t, barPhase, seedS1, seedS3 } = ctx;
+
+  const f1 = 3.6 + seedS1 * 2.8;
+  const f2 = 5.4 + seedS3 * 2.2;
+  const f3 = 7.3 + seedS1 * seedS3 * 3.1;
+  const f4 = 4.7 + seedS3 * 1.6;
+
+  const waveA = Math.sin(t * f1 + barPhase);
+  const waveB = Math.sin(t * f2 - barPhase * 1.41);
+  const waveC = Math.sin(t * f3 + barPhase * 0.73 + seedS1 * 4.2);
+  const waveD = Math.sin(t * f4 - barPhase * 0.97 + seedS3 * 3.8);
+  const foam = Math.sin(t * (9.5 + seedS1 * 4.5) + barPhase * 2.15) * 0.06;
+
+  const swell = 0.5 + waveA * 0.2 + waveB * 0.17 + waveC * 0.14 + waveD * 0.11 + foam;
+  return Math.max(0.26, Math.min(1.12, swell));
+}
+
+/** 播放中的动态包络：两种模式视觉差异明显，波形本体仍居中。 */
+function spreadMotion(mode: WaveformSpreadMode, ctx: SpreadContext): number {
+  const { t, dist, skew, barPhase } = ctx;
 
   switch (mode) {
-    case 'edges-in':
-      return (
-        Math.sin(t * 6.8 + dist * 10.5 + barPhase + bandJitter) * 0.24 +
-        Math.sin(t * 5.1 + dist * 7.2 + seedS3 * 1.4) * 0.16 +
-        (1 - dist) * Math.sin(t * 4.6 + bandJitter) * 0.12
-      );
-    case 'right-left':
-      return (
-        Math.sin(t * 6.4 - pos * 11.0 + barPhase + bandJitter) * 0.26 +
-        Math.sin(t * 4.9 - pos * 7.5 + seedS3 * 1.2) * 0.15
-      );
+    case 'right-left': {
+      const barPos = skew + 0.5;
+      const front = 1 - ((t * 1.55) % 1);
+      const delta = barPos - front;
+      const band = Math.exp(-delta * delta * 55);
+      const wake = Math.exp(-Math.pow(delta - 0.1, 2) * 38) * 0.38;
+      const shimmer = 0.14 * Math.sin(t * 10.5 + barPhase);
+      return 0.3 + band * 0.92 + wake + shimmer;
+    }
     default:
-      return (
-        Math.sin(t * 7.0 - dist * 10.8 + barPhase + bandJitter) * 0.25 +
-        Math.sin(t * 5.3 - dist * 7.0 + seedS3 * 1.3) * 0.17 +
-        (1 - dist) * Math.sin(t * 4.8 + bandJitter) * 0.11
-      );
+      return spreadMotionCenterOut(ctx);
   }
 }
 
+/** 当前播放点附近采样，不把柱位映射成时间轴，避免右→左漂移。 */
+function sampleOceanPeak(
+  peaks: Float32Array,
+  centerIdx: number,
+  halfSpan: number,
+  seedS1: number,
+  seedS3: number,
+  live: boolean,
+): number {
+  const micro = ((seedS1 - 0.5) * 0.06 + (seedS3 - 0.5) * 0.04) * halfSpan;
+  const peak = samplePeakAt(peaks, centerIdx + micro, live);
+  const texture = 0.62 + seedS1 * 0.24 + seedS3 * 0.18;
+  return peak * texture;
+}
+
 /**
- * 居中海浪式采样：峰值以播放点为中心对称读取，
- * 涟漪相位按距中心距离扩散，从中间向两侧走。
+ * 居中对齐时间轴：中间=此刻，左右=前后片段；播放时叠加模式化动态。
  */
 export function samplePeaksBarHeights(
   peaks: Float32Array,
@@ -192,67 +219,136 @@ export function samplePeaksBarHeights(
   out: Float32Array,
   options: SamplePeaksOptions = {},
 ): boolean {
-  const { localWindowSec = 0.42, live = false, phaseMs = 0, spreadMode = 'center-out' } = options;
+  const { localWindowSec = 0.55, live = false, phaseMs = 0, spreadMode = 'center-out' } = options;
 
   if (peaks.length === 0 || duration <= 0 || barCount <= 0) {
     return false;
   }
 
   const centerIdx = (currentTime / duration) * (peaks.length - 1);
-  const halfSpan = Math.max(2, ((localWindowSec / duration) * peaks.length) / 2);
-  const centerEnergy = samplePeakAt(peaks, centerIdx);
+  const halfSpan = Math.max(3, ((localWindowSec / duration) * peaks.length) / 2);
   let maxBar = 0;
 
   const barCenter = (barCount - 1) * 0.5;
-  const peakSharp = live;
+  const t = phaseMs * 0.001;
 
   for (let i = 0; i < barCount; i++) {
-    const env = viewportEnvelope(i, barCount);
     const dist = Math.abs(i - barCenter) / Math.max(1, barCenter);
-    const pos = i / Math.max(1, barCount - 1);
+    const skew = i / Math.max(1, barCount - 1) - 0.5;
     const seed = barSeed(i, barCount);
+    const env = viewportEnvelope(i, barCount);
+    const barPhase = seed.s2 * Math.PI * 2 + i * 0.38;
 
-    const radial = halfSpan * (0.28 + (spreadMode === 'right-left' ? pos : dist) * 0.72);
-    const micro =
-      spreadMode === 'right-left'
-        ? (seed.s1 - 0.5) * halfSpan * 0.18
-        : (seed.s1 - 0.5) * halfSpan * 0.1;
-    const anchor = centerIdx + micro;
-    const centerPeak = samplePeakAt(peaks, anchor, peakSharp);
-    const forwardPeak = samplePeakAt(
-      peaks,
-      anchor + (spreadMode === 'right-left' ? radial * 0.65 : radial),
-      peakSharp,
-    );
-    const backPeak = samplePeakAt(
-      peaks,
-      anchor - (spreadMode === 'right-left' ? radial * 0.35 : radial * 0.85),
-      peakSharp,
-    );
-    const wave = live
-      ? Math.max(centerPeak, forwardPeak * 0.82, backPeak * 0.72)
-      : (centerPeak + forwardPeak + backPeak) / 3;
-
-    let value = Math.min(1, env * wave);
-
-    if (live && value > 0.04 && centerEnergy > 0.03) {
-      const t = phaseMs * 0.001;
-      const bandJitter = seed.s2 * Math.PI * 2;
-      const ripple = spreadRipple(
-        spreadMode,
-        t,
-        dist,
-        pos,
-        i,
-        bandJitter,
-        seed.s2,
-        seed.s3,
-      );
-      const rippleLift = Math.max(0, ripple) * 0.55;
-      const rippleDip = Math.min(0, ripple) * 0.35;
-      value = Math.min(1, value * (1 + rippleDip) + env * rippleLift);
+    let base: number;
+    if (spreadMode === 'right-left') {
+      // 线性时间轴：随播放推进，波形自右向左流过
+      const offsetNorm = (i - barCenter) / Math.max(1, barCenter);
+      const peakIdx = centerIdx + offsetNorm * halfSpan + (seed.s1 - 0.5) * halfSpan * 0.06;
+      base = samplePeakAt(peaks, peakIdx, live);
+    } else {
+      // 原地海浪：峰值取自当前时刻，高度差由动画驱动
+      base = sampleOceanPeak(peaks, centerIdx, halfSpan, seed.s1, seed.s3, live);
     }
 
+    let value = base * env;
+
+    if (live && value > 0.015) {
+      const motion = spreadMotion(spreadMode, {
+        t,
+        dist,
+        skew,
+        barPhase,
+        seedS1: seed.s1,
+        seedS3: seed.s3,
+      });
+      value = Math.min(1, base * env * motion);
+    }
+
+    out[i] = value;
+    if (value > maxBar) maxBar = value;
+  }
+
+  return maxBar > 0.02;
+}
+
+/** 无峰值缓存时：纯动画波形，保证模式切换可见。 */
+export function sampleSpreadMotionBarHeights(
+  barCount: number,
+  out: Float32Array,
+  options: Pick<SamplePeaksOptions, 'live' | 'phaseMs' | 'spreadMode'>,
+): boolean {
+  const { live = false, phaseMs = 0, spreadMode = 'center-out' } = options;
+
+  if (!live) {
+    computeRestBarHeights(barCount, out);
+    return true;
+  }
+
+  const t = phaseMs * 0.001;
+  const barCenter = (barCount - 1) * 0.5;
+  let maxBar = 0;
+
+  for (let i = 0; i < barCount; i++) {
+    const dist = Math.abs(i - barCenter) / Math.max(1, barCenter);
+    const skew = i / Math.max(1, barCount - 1) - 0.5;
+    const seed = barSeed(i, barCount);
+    const env = viewportEnvelope(i, barCount);
+    const barPhase = seed.s2 * Math.PI * 2 + i * 0.38;
+    const base = env * (0.42 + seed.s3 * 0.48);
+    const motion = spreadMotion(spreadMode, {
+      t,
+      dist,
+      skew,
+      barPhase,
+      seedS1: seed.s1,
+      seedS3: seed.s3,
+    });
+    const value = Math.min(1, base * motion);
+    out[i] = value;
+    if (value > maxBar) maxBar = value;
+  }
+
+  return maxBar > 0.02;
+}
+
+/** 实时音频 + 扩散模式：峰值加载失败时的主路径。 */
+export function sampleAnalyserSpreadBarHeights(
+  analyser: AnalyserNode,
+  barCount: number,
+  out: Float32Array,
+  options: Pick<SamplePeaksOptions, 'phaseMs' | 'spreadMode'>,
+): boolean {
+  const scratch = new Float32Array(barCount);
+  const spreadMode = options.spreadMode ?? 'center-out';
+  const phaseMs = options.phaseMs ?? 0;
+  const hasSignal = sampleLiveBarHeights(analyser, barCount, scratch);
+
+  if (!hasSignal) {
+    return sampleSpreadMotionBarHeights(barCount, out, {
+      live: true,
+      phaseMs,
+      spreadMode,
+    });
+  }
+
+  const t = phaseMs * 0.001;
+  const barCenter = (barCount - 1) * 0.5;
+  let maxBar = 0;
+
+  for (let i = 0; i < barCount; i++) {
+    const dist = Math.abs(i - barCenter) / Math.max(1, barCenter);
+    const skew = i / Math.max(1, barCount - 1) - 0.5;
+    const seed = barSeed(i, barCount);
+    const barPhase = seed.s2 * Math.PI * 2 + i * 0.38;
+    const motion = spreadMotion(spreadMode, {
+      t,
+      dist,
+      skew,
+      barPhase,
+      seedS1: seed.s1,
+      seedS3: seed.s3,
+    });
+    const value = Math.min(1, scratch[i] * (motion / 0.62));
     out[i] = value;
     if (value > maxBar) maxBar = value;
   }
@@ -313,7 +409,7 @@ function drawBar(
   ctx.globalAlpha = 1;
 }
 
-/** 居中实时波浪：仅展示此刻播放片段，不画未来时间轴。 */
+/** 居中实时波浪：当前播放点在正中，播放时高亮中心轴。 */
 export function drawLiveWaveform({
   ctx,
   heights,
@@ -345,12 +441,16 @@ export function drawLiveWaveform({
   const centerY = height / 2;
   const maxHalfHeight = Math.max(5, height / 2 - 3);
   const color = active ? colors.progress : colors.wave;
+  const centerBar = (barCount - 1) * 0.5;
 
   for (let i = 0; i < barCount; i++) {
     const x = offsetX + i * WAVEFORM_BAR_SPACING;
-    const halfHeight = Math.max(WAVEFORM_BAR_MIN_HEIGHT / 2, heights[i] * maxHalfHeight);
-    const alpha = active ? 0.55 + heights[i] * 0.45 : 0.28 + heights[i] * 0.2;
-    drawBar(ctx, x, centerY, WAVEFORM_BAR_WIDTH + 1, halfHeight * 1.06, color, alpha * 0.14);
+    const h = heights[i];
+    const distFromCenter = Math.abs(i - centerBar) / Math.max(1, centerBar);
+    const centerBoost = active ? 1 + Math.max(0, 1 - distFromCenter * 2.2) * 0.12 : 1;
+    const halfHeight = Math.max(WAVEFORM_BAR_MIN_HEIGHT / 2, h * maxHalfHeight * centerBoost);
+    const alpha = active ? 0.5 + h * 0.5 : 0.25 + h * 0.22;
+    drawBar(ctx, x, centerY, WAVEFORM_BAR_WIDTH + 1, halfHeight * 1.08, color, alpha * 0.16);
     drawBar(ctx, x, centerY, WAVEFORM_BAR_WIDTH, halfHeight, color, alpha);
   }
 }

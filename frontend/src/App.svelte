@@ -11,12 +11,17 @@
   import { initAudioEngine } from '@/stores/playback/audioEngine';
   import '@/stores/sync/appDataSync';
   import { localLibrary, setLocalPageActive } from '@/stores/library/localLibrary.svelte';
+  import { player } from '@/stores/playback/player.svelte';
+  import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
 
   let audioEl = $state<HTMLAudioElement | null>(null);
   let audioRoot = $state<HTMLDivElement | null>(null);
   let localPageMounted = $state(false);
 
   const isLocalRoute = $derived(router.location === '/local');
+  const hidePlayerBarInDetail = $derived(
+    player.viewMode === 'immersive' && playerUiSettings.detailHidePlayerBar,
+  );
 
   $effect(() => {
     if (audioEl && audioRoot) {
@@ -59,7 +64,7 @@
     </div>
   </div>
 
-  <div class="app-footer">
+  <div class="app-footer" class:footer-hidden={hidePlayerBarInDetail}>
     <PlayerBar />
   </div>
 </div>
@@ -130,6 +135,10 @@
     height: 80px;
     flex-shrink: 0;
     background: #f5f5f5;
+  }
+
+  .app-footer.footer-hidden {
+    display: none;
   }
 
   .audio-root {

@@ -7,11 +7,13 @@
   import DetailViewSettingsMenu from '@/components/song/DetailViewSettingsMenu.svelte';
   import SongDetail from '@/pages/song/SongDetail.svelte';
   import { player, closeImmersiveView } from '@/stores/playback/player.svelte';
+  import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
   import { fetchCoverUrl } from '@/lib/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
 
   let coverSrc = $derived(player.currentSong.coverUrl?.trim() || defaultCover);
   let displayedCover = $state(defaultCover);
+  let reservePlayerBar = $derived(!playerUiSettings.detailHidePlayerBar);
 
   $effect(() => {
     const target = coverSrc;
@@ -57,6 +59,7 @@
 
     <div
       class="detail-panel"
+      class:full-height={!reservePlayerBar}
       role="dialog"
       aria-modal="true"
       aria-label="正在播放"
@@ -125,6 +128,10 @@
     display: flex;
     flex-direction: column;
     will-change: transform;
+  }
+
+  .detail-panel.full-height {
+    bottom: 0;
   }
 
   .detail-panel::after {

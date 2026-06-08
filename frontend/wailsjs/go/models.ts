@@ -206,6 +206,11 @@ export namespace music {
 	    repeatMode: string;
 	    shuffled: boolean;
 	    waveformSpread: string;
+	    detailHideLyrics: boolean;
+	    detailHideVisual: boolean;
+	    detailCoverShape: string;
+	    detailCoverSpin: boolean;
+	    detailHidePlayerBar: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PlayerSettings(source);
@@ -218,6 +223,11 @@ export namespace music {
 	        this.repeatMode = source["repeatMode"];
 	        this.shuffled = source["shuffled"];
 	        this.waveformSpread = source["waveformSpread"];
+	        this.detailHideLyrics = source["detailHideLyrics"];
+	        this.detailHideVisual = source["detailHideVisual"];
+	        this.detailCoverShape = source["detailCoverShape"];
+	        this.detailCoverSpin = source["detailCoverSpin"];
+	        this.detailHidePlayerBar = source["detailHidePlayerBar"];
 	    }
 	}
 	export class RecentSong {

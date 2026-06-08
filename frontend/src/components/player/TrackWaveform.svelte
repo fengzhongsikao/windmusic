@@ -9,11 +9,13 @@
   import { player } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
   import { loadWaveformPeaks } from '@/lib/waveformPeaks';
+  import type { WaveformSpreadMode } from '@/lib/waveformSpread';
   import {
     computeRestBarHeights,
     computeVisibleBarCount,
     drawLiveWaveform,
     samplePeaksBarHeights,
+    sampleSpreadMotionBarHeights,
     smoothHeights,
     type WaveformColors,
   } from '@/lib/waveform';
@@ -36,6 +38,8 @@
   let syncedAtMs = $state(0);
   let waveformPeaks = $state<Float32Array | null>(null);
   let peaksSourceUrl = $state('');
+  let lastPaintRevision = $state(-1);
+  let motionPhaseOriginMs = $state(0);
 
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
@@ -45,6 +49,8 @@
   let canDriveWave = $derived(
     isPlaying && !player.isMuted && player.volume > 0,
   );
+  let spreadMode = $derived(playerUiSettings.waveformSpread);
+  let spreadRevision = $derived(playerUiSettings.waveformSpreadRevision);
 
   const colors = $derived<WaveformColors>(
     tone === 'light'
@@ -84,7 +90,7 @@
     return syncedAudioTime;
   }
 
-  function paintWaveform() {
+  function paintWaveform(mode: WaveformSpreadMode) {
     const canvas = canvasEl;
     if (!canvas || barCount <= 0) return;
 
@@ -94,21 +100,24 @@
     const peaks = waveformPeaks;
     const time = sampleTimeForWaveform();
     const trackDuration = duration;
+    const phaseMs = performance.now() - motionPhaseOriginMs;
+    const waveOpts = { live: canDriveWave, phaseMs, spreadMode: mode };
+    let sampled = false;
 
     if (peaks && trackDuration > 0) {
-      if (
-        samplePeaksBarHeights(peaks, trackDuration, time, barCount, targetHeights, {
-          live: canDriveWave,
-          phaseMs: performance.now(),
-          spreadMode: playerUiSettings.waveformSpread,
-        })
-      ) {
-        showingLive = canDriveWave;
-        smoothHeights(barHeights, targetHeights, canDriveWave ? 0.62 : 0.28);
-      } else {
-        computeRestBarHeights(barCount, targetHeights);
-        smoothHeights(barHeights, targetHeights, 0.2);
+      sampled = samplePeaksBarHeights(peaks, trackDuration, time, barCount, targetHeights, waveOpts);
+    } else if (canDriveWave) {
+      sampled = sampleSpreadMotionBarHeights(barCount, targetHeights, waveOpts);
+    }
+
+    if (sampled) {
+      showingLive = canDriveWave;
+      const modeChanged = spreadRevision !== lastPaintRevision;
+      if (modeChanged) {
+        lastPaintRevision = spreadRevision;
       }
+      const smoothFactor = modeChanged ? 1 : canDriveWave ? 0.42 : 0.28;
+      smoothHeights(barHeights, targetHeights, smoothFactor);
     } else {
       computeRestBarHeights(barCount, targetHeights);
       smoothHeights(barHeights, targetHeights, 0.2);
@@ -199,8 +208,15 @@
   });
 
   $effect(() => {
-    const driving = canDriveWave || waveformPeaks != null;
-    playerUiSettings.waveformSpread;
+    spreadRevision;
+    motionPhaseOriginMs = performance.now();
+  });
+
+  $effect(() => {
+    const mode = spreadMode;
+    spreadRevision;
+    canDriveWave;
+    waveformPeaks;
     displayTime;
     barCount;
     viewportWidth;
@@ -213,7 +229,7 @@
     const decayFrames = 24;
 
     const loop = () => {
-      paintWaveform();
+      paintWaveform(mode);
       frames += 1;
       if (!canDriveWave && frames >= decayFrames) {
         return;

@@ -8,6 +8,7 @@
   import { parseLrc, findActiveLineIndex, type LrcLine } from '@/lib/lrc';
   import { lrcRaw, lyricLoading, lyricError } from '@/stores/playback/lyrics';
   import { audioCurrentTime, audioLoading, audioError, seekAudio } from '@/stores/playback/audioEngine';
+  import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
   import defaultCover from '@/assets/images/default.jpg';
 
   let track = $derived(player.currentSong);
@@ -21,6 +22,12 @@
   let activeIndex = $derived(findActiveLineIndex(lyricLines, currentTime));
   let artistLine = $derived(
     [track.artist, track.album].filter(Boolean).join(' - ') || track.artist,
+  );
+  let hideLyrics = $derived(playerUiSettings.detailHideLyrics);
+  let hideVisual = $derived(playerUiSettings.detailHideVisual);
+  let coverShape = $derived(playerUiSettings.detailCoverShape);
+  let coverSpin = $derived(
+    playerUiSettings.detailCoverSpin && coverShape === 'round',
   );
 
   function seekToLine(index: number) {
@@ -47,11 +54,23 @@
 </script>
 
 <div class="player-view">
-  <div class="player-stage">
+  <div
+    class="player-stage"
+    class:visual-only={hideLyrics && !hideVisual}
+    class:lyrics-only={hideVisual && !hideLyrics}
+  >
+    {#if !hideVisual}
     <aside class="visual-side" aria-labelledby="track-heading">
-      <div class="cover-wrap">
-        <div class="cover-ring" aria-hidden="true"></div>
-        <div class="cover-disc" class:spinning={player.isPlaying}>
+      <div class="cover-wrap" class:square={coverShape === 'square'}>
+        {#if coverShape === 'round'}
+          <div class="cover-ring" aria-hidden="true"></div>
+        {/if}
+        <div
+          class="cover-art"
+          class:round={coverShape === 'round'}
+          class:square={coverShape === 'square'}
+          class:spinning={player.isPlaying && coverSpin}
+        >
           <img src={coverSrc} alt={`${track.title} 封面`} class="cover-img" />
         </div>
       </div>
@@ -64,7 +83,9 @@
       <!-- 封面下方实时波浪：TrackWaveform（AnalyserNode + Canvas，仅此刻播放片段） -->
       <TrackWaveform tone="light" />
     </aside>
+    {/if}
 
+    {#if !hideLyrics}
     <section class="lyrics-side" aria-label="歌词">
       {#if $lyricLoading}
         <span class="lyric-loading" aria-hidden="true">
@@ -107,6 +128,7 @@
         </div>
       {/if}
     </section>
+    {/if}
   </div>
 </div>
 
@@ -147,6 +169,31 @@
       grid-template-rows: auto 1fr;
       align-items: start;
     }
+
+    .player-stage.visual-only,
+    .player-stage.lyrics-only {
+      grid-template-rows: 1fr;
+      align-items: center;
+    }
+  }
+
+  .player-stage.visual-only,
+  .player-stage.lyrics-only {
+    grid-template-columns: 1fr;
+  }
+
+  .player-stage.visual-only .visual-side {
+    justify-content: center;
+    height: 100%;
+    padding: 24px 32px;
+  }
+
+  .player-stage.visual-only .cover-wrap {
+    width: min(300px, 78vw);
+  }
+
+  .player-stage.lyrics-only .lyrics-side {
+    padding: 16px 24px;
   }
 
   /* —— 左侧视觉区 —— */
@@ -167,6 +214,10 @@
     justify-content: center;
   }
 
+  .cover-wrap.square {
+    width: min(260px, 76vw);
+  }
+
   .cover-ring {
     position: absolute;
     inset: 0;
@@ -175,15 +226,25 @@
     box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
   }
 
-  .cover-disc {
-    width: 88%;
-    aspect-ratio: 1;
-    border-radius: 50%;
+  .cover-art {
     overflow: hidden;
     box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
   }
 
-  .cover-disc.spinning {
+  .cover-art.round {
+    width: 88%;
+    aspect-ratio: 1;
+    border-radius: 50%;
+  }
+
+  .cover-art.square {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .cover-art.spinning {
     animation: spin 18s linear infinite;
   }
 
