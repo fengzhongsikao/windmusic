@@ -5,7 +5,7 @@
 - Project type: desktop app with `Wails + Svelte + TypeScript`
 - Goal: search songs from imported JS sources, fetch playable URL/lyrics/cover via Go backend, and play audio in frontend
 - Runtime boundary:
-  - Go (`Wails`) handles source management and data fetching
+  - Go (`Wails`) handles source management, data fetching, and persistence
   - Svelte frontend handles UI state and actual audio playback (`HTMLAudioElement`)
 
 ## Repository Layout
@@ -18,7 +18,7 @@
   - `events/`: Wails event name constants
   - `persist/`: JSON persistence (favorites, recent, playlists, settings)
   - `cache/`: in-memory caches (discover)
-  - `local/`: local folder library
+  - `local/`: local folder scan, SQLite cache (`local-library.db`), cover files (`local-covers/`)
   - `meting/`: online source search and URLs
 - `frontend/`: Svelte 5 app
   - `src/pages/`: page-level UI
@@ -30,6 +30,12 @@
     - `ui/`: toast notifications
     - `sync/`: backend event subscription bootstrap
   - `wailsjs/`: generated Wails bindings (do not hand-edit)
+
+## Backend Tech Stack (from `go.mod`)
+
+- Desktop: `github.com/wailsapp/wails/v2` `v2.12.0`, Go `1.25`
+- Local library persistence: `modernc.org/sqlite` `v1.52.0` (pure Go, no CGO; WAL mode in `music/local/db.go`)
+- Audio metadata: `github.com/dhowden/tag`, `github.com/mewkiz/flac`, `github.com/tcolgate/mp3`
 
 ## Frontend Tech Stack (from `frontend/package.json`)
 
@@ -44,13 +50,28 @@
   - `tslib` `^2.8.1`
   - `@types/node` `^25.9.1`
 - UI:
-  - `flowbite` `^4.0.2`
-  - `flowbite-svelte` `^1.33.1`
+  - `@skeletonlabs/skeleton` `^4.15.2`
+  - `@skeletonlabs/skeleton-svelte` `^4.15.2`
   - `@lucide/svelte` `^1.3.0`
+  - `@tanstack/svelte-virtual` `^3.13.28`
   - `tailwindcss` `^4.3.0`
   - `@tailwindcss/vite` `^4.3.0`
 - Routing:
   - `svelte-spa-router` `^5.1.0`
+- JS runtime / package manager: [Bun](https://bun.sh/) (see `wails.json` `frontend:install` / `frontend:build`)
+
+## Data Persistence
+
+App data root: `os.UserConfigDir()/windmusic` (see `music/appdata/`).
+
+| Storage | Format | Managed by |
+|---------|--------|------------|
+| Favorites, recent, playlists, player/meting settings | JSON | `music/persist/` |
+| Local music folder list | `local-folders.json` | `music/local/library.go` |
+| Scan cache + song extras (cover key, lyric) | `local-library.db` (`scan_entries`, `song_extras`) | `music/local/db.go` |
+| Embedded cover image files | `local-covers/` | `music/local/coverfile.go` |
+
+Do not reintroduce legacy `local-scan-cache.json` / `local-scan-extras.json`; local scan state lives in SQLite.
 
 ## Development Commands
 
@@ -66,7 +87,7 @@
 - Playback URL flow:
   1. UI selects a track
   2. Frontend builds playback context (`sourceId`, `platform`, `metaJson`)
-  3. Frontend calls `GetMusicURL(...)` through Wails binding
+  3. Online: `GetMusicURL(...)`; local: `GetLocalAudioStream(...)` via Wails binding
   4. Go source manager/runtime resolves final URL
   5. Frontend `<audio>` sets `src` and plays
 - Keep this invariant: Go does not decode/play audio; frontend audio engine is the single playback executor.
@@ -80,7 +101,8 @@
   - update store API first
   - wire UI controls second
   - verify `ended`, `next/prev`, repeat/shuffle behavior
-- Preserve current backend contract (`Search`, `GetMusicURL`, `GetLyric`, `GetPic`) unless explicitly changing both ends.
+- Preserve current backend contract (`Search`, `GetMusicURL`, `GetLyric`, `GetPic`, local library APIs) unless explicitly changing both ends.
+- Local library schema changes belong in `music/local/db.go`; keep `SetMaxOpenConns(1)` for SQLite.
 - Avoid introducing new dependencies unless required by feature scope.
 
 ## Validation Checklist
@@ -92,3 +114,4 @@
   - play/pause/seek works
   - next/prev and repeat/shuffle behave correctly
   - lyrics still sync with current playback time
+  - local library scan persists across restart (`local-library.db`)

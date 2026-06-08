@@ -1,6 +1,6 @@
 # WindMusic
 
-基于 [Wails v2](https://wails.io/) 的跨平台桌面音乐客户端。前端负责界面与音频播放，Go 后端负责 Meting 网络源数据拉取、本地音乐库扫描，以及收藏、歌单、最近播放等持久化。
+基于 [Wails v2](https://wails.io/) 的跨平台桌面音乐客户端。前端负责界面与音频播放，Go 后端负责 Meting 网络源数据拉取、本地音乐库扫描（SQLite 持久化），以及收藏、歌单、最近播放等 JSON 持久化。
 
 前端使用 **Bun** 作为 JavaScript 运行时与包管理器（见 `wails.json` 中的 `frontend:install` / `frontend:build` 配置）。
 
@@ -25,7 +25,7 @@
 | **我喜欢的音乐** | 收藏管理，支持编辑、全选、批量删除 |
 | **最近播放** | 开始播放时自动记录，支持清空与编辑 |
 | **自建歌单** | 创建、删除歌单，向歌单添加/移除歌曲，侧边栏快速访问 |
-| **本地音乐** | 添加/移除文件夹、扫描 MP3/FLAC/M4A 等格式、文件夹别名、按目录 Tab 筛选、读取内嵌封面与歌词 |
+| **本地音乐** | 添加/移除文件夹、扫描 MP3/FLAC/M4A/AAC/OGG/WAV/WMA 等格式、文件夹别名、按目录 Tab 筛选、读取内嵌封面与歌词；扫描结果与元数据存于 SQLite |
 | **设置** | 配置多个 Meting API 节点，添加、删除、切换当前节点；显示应用数据目录 |
 | **占位页面** | 推荐歌单、排行榜页面已预留路由，尚未接入后端 |
 
@@ -33,10 +33,12 @@
 
 | 层级 | 技术 |
 |------|------|
-| 桌面壳 | Wails v2、Go 1.23 |
+| 桌面壳 | Wails v2、Go 1.25 |
+| 本地库持久化 | [SQLite](https://www.sqlite.org/)（[modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite)，纯 Go、无 CGO） |
+| 音频元数据 | [dhowden/tag](https://github.com/dhowden/tag)、[mewkiz/flac](https://github.com/mewkiz/flac)、[tcolgate/mp3](https://github.com/tcolgate/mp3) |
 | 前端 | Svelte 5、TypeScript、Vite 8、Tailwind CSS 4 |
 | 路由 | svelte-spa-router（Hash 路由） |
-| UI | Lucide 图标、Skeleton UI |
+| UI | Lucide 图标、Skeleton UI、[@tanstack/svelte-virtual](https://tanstack.com/virtual)（大列表虚拟滚动） |
 | JS 运行时 / 包管理 | [Bun](https://bun.sh/) |
 
 ## 架构
@@ -46,17 +48,17 @@
 │  Svelte 前端                                             │
 │  · 页面 / 组件 / 全局 stores                             │
 │  · HTMLAudioElement 实际解码与播放（audioEngine）          │
-│  · 数据由 Go 经 Wails Events 推送，JSON 持久化在后端       │
+│  · 数据由 Go 经 Wails Events 推送，持久化在后端            │
 └───────────────────────┬─────────────────────────────────┘
                         │ Wails Bind（wailsjs/go/main/App）
 ┌───────────────────────▼─────────────────────────────────┐
 │  Go 后端（app*.go → music/ → internal/）                  │
 │  · Search / GetMusicURL / GetLyric / GetPic               │
-│  · 本地库扫描、Meting 源、收藏、歌单、播放器设置等          │
+│  · 本地库扫描（SQLite）、Meting 源、收藏/歌单（JSON）等    │
 └───────────────────────┬─────────────────────────────────┘
-                        │ HTTP / 本地文件
+                        │ HTTP / 本地文件 / SQLite
 ┌───────────────────────▼─────────────────────────────────┐
-│  Meting API 节点 · 本地音频文件夹                          │
+│  Meting API 节点 · 本地音频文件夹 · local-library.db       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -98,7 +100,7 @@ windmusic/
 │   ├── appdata/            # 应用数据目录
 │   ├── cache/              # 内存缓存（发现页推荐）
 │   ├── events/             # Wails 事件名常量
-│   ├── local/              # 本地文件夹扫描与元数据
+│   ├── local/              # 本地文件夹扫描、SQLite 缓存、封面文件
 │   ├── meting/             # Meting 搜索与 URL 解析
 │   └── persist/            # JSON 持久化（收藏、歌单、设置等）
 ├── internal/
@@ -134,7 +136,7 @@ windmusic/
 
 ## 环境要求
 
-- [Go](https://go.dev/) 1.23+
+- [Go](https://go.dev/) 1.25+
 - [Wails CLI](https://wails.io/docs/gettingstarted/installation) v2
 - [Bun](https://bun.sh/) — 前端依赖安装、开发服务器与构建（`wails.json` 已配置）
 
@@ -195,16 +197,23 @@ Release 标签为 `v{productVersion}`（如 `v1.0.5`）。也可在 GitHub **Act
 
 根目录：`os.UserConfigDir()/windmusic`（设置页也会显示 `GetSourceDataDir()` 返回的完整路径）
 
-| 文件 | 内容 |
-|------|------|
-| `favorites.json` | 收藏列表 |
-| `recent.json` | 最近播放 |
-| `playlists.json` | 自建歌单 |
-| `player-settings.json` | 音量、静音、随机、循环模式 |
-| `meting-settings.json` | Meting 节点列表与当前节点 |
-| `local-folders.json` | 本地音乐扫描的文件夹列表 |
-| `local-scan-cache.json` | 本地扫描结果缓存 |
-| `local-scan-extras.json` | 本地封面、歌词等扩展数据 |
+| 文件 / 目录 | 格式 | 内容 |
+|-------------|------|------|
+| `favorites.json` | JSON | 收藏列表 |
+| `recent.json` | JSON | 最近播放 |
+| `playlists.json` | JSON | 自建歌单 |
+| `player-settings.json` | JSON | 音量、静音、随机、循环模式 |
+| `meting-settings.json` | JSON | Meting 节点列表与当前节点 |
+| `local-folders.json` | JSON | 本地音乐扫描的文件夹列表与别名 |
+| `local-library.db` | SQLite | 本地扫描缓存与歌曲扩展元数据（见下表） |
+| `local-covers/` | 文件目录 | 本地曲目内嵌封面（按哈希键存储图片文件） |
+
+**`local-library.db` 表结构**（WAL 模式，由 `music/local/db.go` 管理）：
+
+| 表 | 用途 |
+|----|------|
+| `scan_entries` | 扫描缓存：文件路径、修改时间、`LocalSong` JSON |
+| `song_extras` | 每首歌的封面键（指向 `local-covers/`）与歌词文本 |
 
 各平台常见路径：
 
