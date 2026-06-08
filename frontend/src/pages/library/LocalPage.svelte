@@ -5,14 +5,14 @@
   import { Check, Folder, FolderOpen, LoaderCircle, Pencil, RefreshCw, Trash2, X } from '@lucide/svelte';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import LocalFolderTrackPanel from '@/pages/library/LocalFolderTrackPanel.svelte';
-  import type { TrackItem } from '@/lib/track';
+  import type { TrackItem } from '@/lib/playback/track';
   import {
     folderDisplayLabel,
     localSongToPlayerTrack,
     PickLocalMusicFolder,
     RemoveLocalMusicFolder,
     SetLocalFolderAlias,
-  } from '@/lib/localMusic';
+  } from '@/lib/library/localMusic';
   import {
     LOCAL_ALL_TAB_ID,
     loadTracksIndex,
@@ -24,7 +24,7 @@
     LOCAL_SORT_OPTIONS,
     sortLocalTracks,
     type LocalSortOption,
-  } from '@/lib/localTrackSort';
+  } from '@/lib/library/localTrackSort';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { audioLoading } from '@/stores/playback/audioEngine';
   import { error as toastError } from '@/stores/ui/toast';

@@ -1,7 +1,7 @@
 import { ListRecent } from '../../../wailsjs/go/main/App';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { music } from '../../../wailsjs/go/models';
-import { normalizeRecentSong, type RecentSong } from '@/lib/recentSong';
+import { normalizeRecentSong, type RecentSong } from '@/lib/library/recentSong';
 
 export const RECENT_UPDATED_EVENT = 'recent:updated';
 

@@ -8,7 +8,7 @@
   import SongDetail from '@/pages/song/SongDetail.svelte';
   import { player, closeImmersiveView } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
-  import { fetchCoverUrl } from '@/lib/wailsPlayer';
+  import { fetchCoverUrl } from '@/lib/wails/wailsPlayer';
   import defaultCover from '@/assets/images/default.jpg';
 
   let coverSrc = $derived(player.currentSong.coverUrl?.trim() || defaultCover);

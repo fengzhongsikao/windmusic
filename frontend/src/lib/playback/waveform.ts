@@ -1,4 +1,4 @@
-import type { WaveformSpreadMode } from '@/lib/waveformSpread';
+import type { WaveformSpreadMode } from '@/lib/playback/waveformSpread';
 
 export const WAVEFORM_BAR_WIDTH = 2;
 export const WAVEFORM_BAR_GAP = 2;

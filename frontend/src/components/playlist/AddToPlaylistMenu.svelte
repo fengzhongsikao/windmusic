@@ -9,8 +9,8 @@
     addSongToPlaylist,
     playlistActionErrorMessage,
     playlistContainsSong,
-  } from '@/lib/playlists';
-  import { toFavoriteSong } from '@/lib/wailsPlayer';
+  } from '@/lib/library/playlists';
+  import { toFavoriteSong } from '@/lib/wails/wailsPlayer';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
   import { playlistsState } from '@/stores/library/playlistsStore.svelte';
   import { success, error as toastError } from '@/stores/ui/toast';

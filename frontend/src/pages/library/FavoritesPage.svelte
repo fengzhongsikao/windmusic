@@ -5,11 +5,11 @@
   import { onMount } from 'svelte';
   import { Heart } from '@lucide/svelte';
   import TrackList from '@/components/track/TrackList.svelte';
-  import type { TrackItem } from '@/lib/track';
-  import { favoriteSongKey, removeTrackFavorite } from '@/lib/wailsPlayer';
-  import type { FavoriteSong } from '@/lib/wailsPlayer';
+  import type { TrackItem } from '@/lib/playback/track';
+  import { favoriteSongKey, removeTrackFavorite } from '@/lib/wails/wailsPlayer';
+  import type { FavoriteSong } from '@/lib/wails/wailsPlayer';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
-  import { storedSongToPlayerTrack } from '@/lib/localMusic';
+  import { storedSongToPlayerTrack } from '@/lib/library/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { favoritesState, refreshFavoritesFromBackend } from '@/stores/library/favorites.svelte';
 

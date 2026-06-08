@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Music, Play } from '@lucide/svelte';
   import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
-  import type { TrackItem } from '@/lib/track';
+  import type { TrackItem } from '@/lib/playback/track';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
   import { player } from '@/stores/playback/player.svelte';
   import { localLibrary } from '@/stores/library/localLibrary.svelte';

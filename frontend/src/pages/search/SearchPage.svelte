@@ -5,8 +5,8 @@
   import { Music, Search } from '@lucide/svelte';
   import { router } from 'svelte-spa-router';
   import TrackList from '@/components/track/TrackList.svelte';
-  import type { TrackItem } from '@/lib/track';
-  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import type { TrackItem } from '@/lib/playback/track';
+  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playback/playerTrack';
   import {
     getMetingPlatform,
     getMetingURL,
@@ -14,7 +14,7 @@
     metingSettings,
     metingSourceId,
     type MetingPlatform,
-  } from '@/lib/meting';
+  } from '@/lib/sources/meting';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import {
     player,
@@ -23,7 +23,7 @@
   } from '@/stores/playback/player.svelte';
   import { Search as searchApi } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
-  import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
+  import { buildSearchHref, parseSearchParams } from '@/lib/sources/searchParams';
 
   type SongItem = music.SongItem;
   type SearchResult = music.SearchResult;

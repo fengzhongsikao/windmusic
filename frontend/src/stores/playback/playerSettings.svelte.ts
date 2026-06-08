@@ -5,12 +5,12 @@ import {
   DEFAULT_WAVEFORM_SPREAD,
   normalizeWaveformSpreadMode,
   type WaveformSpreadMode,
-} from '@/lib/waveformSpread';
+} from '@/lib/playback/waveformSpread';
 import {
   DEFAULT_DETAIL_COVER_SHAPE,
   normalizeDetailCoverShape,
   type DetailCoverShape,
-} from '@/lib/detailCoverShape';
+} from '@/lib/playback/detailCoverShape';
 import { player, type RepeatMode } from '@/stores/playback/player.svelte';
 
 export const PLAYER_SETTINGS_UPDATED_EVENT = 'player-settings:updated';

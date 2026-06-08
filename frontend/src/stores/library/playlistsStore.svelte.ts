@@ -1,7 +1,7 @@
 import { ListPlaylists } from '../../../wailsjs/go/main/App';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { music } from '../../../wailsjs/go/models';
-import { normalizePlaylist, type UserPlaylist } from '@/lib/playlists';
+import { normalizePlaylist, type UserPlaylist } from '@/lib/library/playlists';
 
 export const PLAYLISTS_UPDATED_EVENT = 'playlists:updated';
 

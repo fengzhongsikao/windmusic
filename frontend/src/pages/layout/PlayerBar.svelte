@@ -18,8 +18,8 @@
   } from '@/stores/playback/player.svelte';
   import PlayQueuePanel from '@/components/player/PlayQueuePanel.svelte';
   import AddToPlaylistMenu from '@/components/playlist/AddToPlaylistMenu.svelte';
-  import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite, toFavoriteSong } from '@/lib/wailsPlayer';
-  import { sameFavoriteSong } from '@/lib/favoriteSong';
+  import { addTrackFavorite, checkTrackFavorite, fetchCoverUrl, onFavoritesChanged, removeTrackFavorite, toFavoriteSong } from '@/lib/wails/wailsPlayer';
+  import { sameFavoriteSong } from '@/lib/library/favoriteSong';
   import { favoritesState } from '@/stores/library/favorites.svelte';
   import defaultCover from '@/assets/images/default.jpg';
   import {

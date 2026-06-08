@@ -1,4 +1,4 @@
-import { normalizeFavoriteSong, type FavoriteSong } from '@/lib/favoriteSong';
+import { normalizeFavoriteSong, type FavoriteSong } from '@/lib/library/favoriteSong';
 
 export type RecentSong = FavoriteSong & {
   playedAt: string;

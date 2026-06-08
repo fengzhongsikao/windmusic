@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Search, Settings, X } from '@lucide/svelte';
   import { link, router } from 'svelte-spa-router';
-  import { buildSearchHref, parseSearchParams } from '@/lib/searchParams';
+  import { buildSearchHref, parseSearchParams } from '@/lib/sources/searchParams';
 
   let searchQuery = $state('');
 

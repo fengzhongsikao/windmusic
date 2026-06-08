@@ -10,7 +10,7 @@
     deleteUserPlaylist,
     playlistActionErrorMessage,
     type UserPlaylist,
-  } from '@/lib/playlists';
+  } from '@/lib/library/playlists';
   import { playlistsState } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
 

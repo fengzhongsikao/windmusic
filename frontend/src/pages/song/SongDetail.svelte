@@ -5,7 +5,7 @@
   import { Music, LoaderCircle } from '@lucide/svelte';
   import TrackWaveform from '@/components/player/TrackWaveform.svelte';
   import { player } from '@/stores/playback/player.svelte';
-  import { parseLrc, findActiveLineIndex, type LrcLine } from '@/lib/lrc';
+  import { parseLrc, findActiveLineIndex, type LrcLine } from '@/lib/playback/lrc';
   import { lrcRaw, lyricLoading, lyricError } from '@/stores/playback/lyrics';
   import { audioCurrentTime, audioLoading, audioError, seekAudio } from '@/stores/playback/audioEngine';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';

@@ -3,10 +3,10 @@
 -->
 <script lang="ts">
   import { Clock, Music } from '@lucide/svelte';
-  import { removeRecentSong, clearRecentHistory, type RecentSong } from '@/lib/wailsPlayer';
-  import { formatPlayedAt } from '@/lib/recentTime';
+  import { removeRecentSong, clearRecentHistory, type RecentSong } from '@/lib/wails/wailsPlayer';
+  import { formatPlayedAt } from '@/lib/library/recentTime';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
-  import { storedSongToPlayerTrack } from '@/lib/localMusic';
+  import { storedSongToPlayerTrack } from '@/lib/library/localMusic';
   import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/playback/player.svelte';
   import { recentState } from '@/stores/library/recent.svelte';
 

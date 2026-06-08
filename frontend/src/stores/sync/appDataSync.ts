@@ -1,4 +1,4 @@
-import { waitForWailsBridge } from '@/lib/wailsBridge';
+import { waitForWailsBridge } from '@/lib/wails/wailsBridge';
 import { initLocalLibrarySync } from '@/stores/library/localLibrary.svelte';
 import { initPlayerSettingsSync } from '@/stores/playback/playerSettings.svelte';
 import { initMetingSync } from '@/stores/sources/meting.svelte';

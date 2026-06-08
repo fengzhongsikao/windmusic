@@ -13,18 +13,18 @@ import {
   RecordRecent,
   RemoveRecent,
   ClearRecent,
-} from '../../wailsjs/go/main/App';
-import { music } from '../../wailsjs/go/models';
+} from '../../../wailsjs/go/main/App';
+import { music } from '../../../wailsjs/go/models';
 import type { PlayerTrack } from '@/stores/playback/player.svelte';
 import defaultCover from '@/assets/images/default.jpg';
-import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/localMusic';
+import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/library/localMusic';
 import { getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
 import {
   favoriteSongKey,
   normalizeFavoriteSong,
   sameFavoriteSong,
   type FavoriteSong,
-} from '@/lib/favoriteSong';
+} from '@/lib/library/favoriteSong';
 import {
   getFavorites,
   refreshFavoritesFromBackend,
@@ -32,14 +32,14 @@ import {
 import { FAVORITES_UPDATED_EVENT } from '@/stores/library/favorites.svelte';
 import { RECENT_UPDATED_EVENT } from '@/stores/library/recent.svelte';
 import { trackPlaybackKey } from '@/stores/playback/lyrics';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
 
 export type SongItem = music.SongItem;
 export type SearchResult = music.SearchResult;
-export type { FavoriteSong } from '@/lib/favoriteSong';
-export type { RecentSong } from '@/lib/recentSong';
-export { favoriteSongKey, normalizeFavoriteSong } from '@/lib/favoriteSong';
-export { normalizeRecentSong } from '@/lib/recentSong';
+export type { FavoriteSong } from '@/lib/library/favoriteSong';
+export type { RecentSong } from '@/lib/library/recentSong';
+export { favoriteSongKey, normalizeFavoriteSong } from '@/lib/library/favoriteSong';
+export { normalizeRecentSong } from '@/lib/library/recentSong';
 
 export { Search, GetMusicURL, GetLyric, GetPic };
 
@@ -62,7 +62,7 @@ export function onRecentChanged(listener: () => void): () => void {
 
 import { getRecentSongs } from '@/stores/library/recent.svelte';
 
-export async function fetchRecentSongs(): Promise<import('@/lib/recentSong').RecentSong[]> {
+export async function fetchRecentSongs(): Promise<import('@/lib/library/recentSong').RecentSong[]> {
   return [...getRecentSongs()];
 }
 
@@ -238,7 +238,7 @@ export async function removeTrackFavorite(track: PlayerTrack): Promise<void> {
   await refreshFavoritesFromBackend();
 }
 
-export function toRecentSong(track: PlayerTrack): import('@/lib/recentSong').RecentSong {
+export function toRecentSong(track: PlayerTrack): import('@/lib/library/recentSong').RecentSong {
   return {
     ...toFavoriteSong(track),
     playedAt: '',
@@ -264,7 +264,7 @@ export async function recordRecentPlay(track: PlayerTrack): Promise<void> {
   }
 }
 
-export async function removeRecentSong(song: import('@/lib/recentSong').RecentSong): Promise<void> {
+export async function removeRecentSong(song: import('@/lib/library/recentSong').RecentSong): Promise<void> {
   await RemoveRecent(toWailsRecentSong({ ...song }));
 }
 

@@ -5,8 +5,8 @@ import {
   ScanLocalLibrary,
   localSongToTrackItem,
   type LocalSong,
-} from '@/lib/localMusic';
-import type { TrackItem } from '@/lib/track';
+} from '@/lib/library/localMusic';
+import type { TrackItem } from '@/lib/playback/track';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { music } from '../../../wailsjs/go/models';
 

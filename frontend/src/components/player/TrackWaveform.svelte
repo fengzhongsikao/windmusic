@@ -8,8 +8,8 @@
   } from '@/stores/playback/audioEngine';
   import { player } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
-  import { loadWaveformPeaks } from '@/lib/waveformPeaks';
-  import type { WaveformSpreadMode } from '@/lib/waveformSpread';
+  import { loadWaveformPeaks } from '@/lib/playback/waveformPeaks';
+  import type { WaveformSpreadMode } from '@/lib/playback/waveformSpread';
   import {
     computeRestBarHeights,
     computeVisibleBarCount,
@@ -18,7 +18,7 @@
     sampleSpreadMotionBarHeights,
     smoothHeights,
     type WaveformColors,
-  } from '@/lib/waveform';
+  } from '@/lib/playback/waveform';
 
   interface Props {
     tone?: 'light' | 'dark';

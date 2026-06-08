@@ -1,7 +1,7 @@
 <script lang="ts">
   import TrackList from '@/components/track/TrackList.svelte';
-  import type { TrackItem } from '@/lib/track';
-  import type { LocalSortOption } from '@/lib/localTrackSort';
+  import type { TrackItem } from '@/lib/playback/track';
+  import type { LocalSortOption } from '@/lib/library/localTrackSort';
   import { LOCAL_ALL_TAB_ID } from '@/stores/library/localLibrary.svelte';
   import { player } from '@/stores/playback/player.svelte';
 

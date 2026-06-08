@@ -5,9 +5,9 @@ import {
   GetPlaylist,
   ListPlaylists,
   RemovePlaylistSong,
-} from '../../wailsjs/go/main/App';
-import { music } from '../../wailsjs/go/models';
-import { favoriteSongKey, type FavoriteSong } from '@/lib/favoriteSong';
+} from '../../../wailsjs/go/main/App';
+import { music } from '../../../wailsjs/go/models';
+import { favoriteSongKey, type FavoriteSong } from '@/lib/library/favoriteSong';
 import {
   clearPlaylistDetailCache,
   deleteCachedPlaylist,
@@ -17,7 +17,7 @@ import {
   setCachedPlaylist,
 } from '@/stores/library/playlistsStore.svelte';
 import { PLAYLISTS_UPDATED_EVENT } from '@/stores/library/playlistsStore.svelte';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
+import { EventsOn } from '../../../wailsjs/runtime/runtime';
 
 export type UserPlaylist = {
   id: string;

@@ -2,7 +2,7 @@
   import { createVirtualizer } from '@tanstack/svelte-virtual';
   import { get } from 'svelte/store';
   import TrackListRow from '@/components/track/TrackListRow.svelte';
-  import type { TrackItem } from '@/lib/track';
+  import type { TrackItem } from '@/lib/playback/track';
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
 
   interface Props {

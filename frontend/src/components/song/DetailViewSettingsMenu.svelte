@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Settings, ChevronDown, Check } from '@lucide/svelte';
   import { Popover, Portal, Switch } from '@skeletonlabs/skeleton-svelte';
-  import { WAVEFORM_SPREAD_OPTIONS } from '@/lib/waveformSpread';
-  import { DETAIL_COVER_SHAPE_OPTIONS } from '@/lib/detailCoverShape';
+  import { WAVEFORM_SPREAD_OPTIONS } from '@/lib/playback/waveformSpread';
+  import { DETAIL_COVER_SHAPE_OPTIONS } from '@/lib/playback/detailCoverShape';
   import {
     playerUiSettings,
     setDetailCoverShape,

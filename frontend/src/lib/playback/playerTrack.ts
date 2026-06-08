@@ -1,6 +1,6 @@
-import type { TrackItem } from '@/lib/track';
+import type { TrackItem } from '@/lib/playback/track';
 import type { PlayerTrack, PlaybackContext } from '@/stores/playback/player';
-import { music } from '../../wailsjs/go/models';
+import { music } from '../../../wailsjs/go/models';
 
 type SongItem = music.SongItem;
 

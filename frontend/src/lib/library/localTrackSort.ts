@@ -1,4 +1,4 @@
-import type { TrackItem } from '@/lib/track';
+import type { TrackItem } from '@/lib/playback/track';
 
 export type LocalSortOption =
   | 'title-asc'

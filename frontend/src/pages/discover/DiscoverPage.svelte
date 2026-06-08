@@ -4,8 +4,8 @@
 -->
 <script lang="ts">
   import TrackList from '@/components/track/TrackList.svelte';
-  import type { TrackItem } from '@/lib/track';
-  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playerTrack';
+  import type { TrackItem } from '@/lib/playback/track';
+  import { buildPlaybackContext, trackItemToPlayerTrack } from '@/lib/playback/playerTrack';
   import { getMetingPlatform, getMetingURL, hasMetingSource, metingSettings, metingSourceId } from '@/stores/sources/meting.svelte';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
@@ -15,7 +15,7 @@
     SetDiscoverRecommendCache,
   } from '../../../wailsjs/go/main/App';
   import { music } from '../../../wailsjs/go/models';
-  import { recoverFromStaleWailsBridge, waitForWailsBridge } from '@/lib/wailsBridge';
+  import { recoverFromStaleWailsBridge, waitForWailsBridge } from '@/lib/wails/wailsBridge';
 
   let activeTab = $state('recommend');
 

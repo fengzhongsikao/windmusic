@@ -7,9 +7,9 @@
   import { ListMusic } from '@lucide/svelte';
   import TrackList from '@/components/track/TrackList.svelte';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
-  import type { TrackItem } from '@/lib/track';
-  import type { FavoriteSong } from '@/lib/wailsPlayer';
-  import { favoriteSongKey } from '@/lib/wailsPlayer';
+  import type { TrackItem } from '@/lib/playback/track';
+  import type { FavoriteSong } from '@/lib/wails/wailsPlayer';
+  import { favoriteSongKey } from '@/lib/wails/wailsPlayer';
   import {
     deleteUserPlaylist,
     fetchPlaylist,
@@ -17,8 +17,8 @@
     playlistActionErrorMessage,
     removeSongFromPlaylist,
     type UserPlaylist,
-  } from '@/lib/playlists';
-  import { storedSongToPlayerTrack } from '@/lib/localMusic';
+  } from '@/lib/library/playlists';
+  import { storedSongToPlayerTrack } from '@/lib/library/localMusic';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { playlistsState, refreshPlaylistsFromBackend } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
