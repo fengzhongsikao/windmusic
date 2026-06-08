@@ -38,6 +38,11 @@ function sameTrack(a: PlayerTrack, b: PlayerTrack): boolean {
 }
 
 let shuffleOrder: number[] = [];
+let currentQueueIndex = -1;
+
+function syncCurrentQueueIndex() {
+  currentQueueIndex = player.queue.findIndex((item) => sameTrack(item, player.currentSong));
+}
 
 function fisherYatesOrder(length: number): number[] {
   const order = Array.from({ length }, (_, index) => index);
@@ -55,12 +60,11 @@ function rebuildShuffleOrder() {
     return;
   }
   shuffleOrder = fisherYatesOrder(queue.length);
-  const currentIndex = queue.findIndex((item) => sameTrack(item, player.currentSong));
-  if (currentIndex >= 0) {
-    const pos = shuffleOrder.indexOf(currentIndex);
+  if (currentQueueIndex >= 0) {
+    const pos = shuffleOrder.indexOf(currentQueueIndex);
     if (pos > 0) {
       shuffleOrder[pos] = shuffleOrder[0];
-      shuffleOrder[0] = currentIndex;
+      shuffleOrder[0] = currentQueueIndex;
     }
   }
 }
@@ -116,10 +120,12 @@ export function toggleImmersiveView() {
 
 export function setCurrentTrack(track: PlayerTrack) {
   player.currentSong = track;
+  syncCurrentQueueIndex();
 }
 
 export function setQueue(tracks: PlayerTrack[]) {
   player.queue = tracks;
+  syncCurrentQueueIndex();
   syncShuffleOrderAfterQueueChange();
 }
 
@@ -128,6 +134,7 @@ export function playQueueTrack(index: number) {
   if (!track) {
     return;
   }
+  currentQueueIndex = index;
   player.currentSong = track;
   player.isPlaying = true;
 }
@@ -136,8 +143,11 @@ export function removeQueueTrack(index: number) {
   if (index < 0 || index >= player.queue.length) {
     return;
   }
-  const removingCurrent = sameTrack(player.queue[index], player.currentSong);
+  const removingCurrent = index === currentQueueIndex;
   player.queue = player.queue.filter((_, i) => i !== index);
+  if (!removingCurrent && index < currentQueueIndex) {
+    currentQueueIndex -= 1;
+  }
   if (player.isShuffled) {
     shuffleOrder = shuffleOrder
       .filter((i) => i !== index)
@@ -145,6 +155,7 @@ export function removeQueueTrack(index: number) {
     syncShuffleOrderAfterQueueChange();
   }
   if (removingCurrent) {
+    currentQueueIndex = -1;
     if (player.queue.length === 0) {
       player.isPlaying = false;
       return;
@@ -156,6 +167,7 @@ export function removeQueueTrack(index: number) {
 export function clearQueue() {
   player.queue = [];
   shuffleOrder = [];
+  currentQueueIndex = -1;
 }
 
 export function togglePlayByTrack(track: PlayerTrack) {
@@ -165,18 +177,21 @@ export function togglePlayByTrack(track: PlayerTrack) {
     player.isPlaying = !player.isPlaying;
     if (queueIndex < 0) {
       player.queue = [...player.queue, track];
+      currentQueueIndex = player.queue.length - 1;
       syncShuffleOrderAfterQueueChange();
     }
     return;
   }
 
   if (queueIndex >= 0) {
+    currentQueueIndex = queueIndex;
     player.currentSong = player.queue[queueIndex];
     player.isPlaying = true;
     return;
   }
 
   player.queue = [...player.queue, track];
+  currentQueueIndex = player.queue.length - 1;
   syncShuffleOrderAfterQueueChange();
   player.currentSong = track;
   player.isPlaying = true;
@@ -187,6 +202,7 @@ export function playAllTracks(tracks: PlayerTrack[]) {
     return;
   }
   setQueue(tracks);
+  currentQueueIndex = 0;
   player.currentSong = tracks[0];
   player.isPlaying = true;
 }
@@ -208,7 +224,7 @@ function resolveNextQueueIndex(fromEnded: boolean): number | null {
     return 0;
   }
 
-  const currentIndex = queue.findIndex((item) => sameTrack(item, player.currentSong));
+  const currentIndex = currentQueueIndex;
 
   if (player.isShuffled && shuffleOrder.length === queue.length) {
     const orderPos = currentIndex < 0 ? -1 : shuffleOrder.indexOf(currentIndex);
@@ -243,7 +259,7 @@ function resolvePreviousQueueIndex(): number | null {
     return 0;
   }
 
-  const currentIndex = queue.findIndex((item) => sameTrack(item, player.currentSong));
+  const currentIndex = currentQueueIndex;
 
   if (player.isShuffled && shuffleOrder.length === queue.length) {
     const orderPos = currentIndex < 0 ? 0 : shuffleOrder.indexOf(currentIndex);
@@ -262,6 +278,7 @@ export function playNextTrack(fromEnded = false): boolean {
   if (nextIndex == null) {
     return false;
   }
+  currentQueueIndex = nextIndex;
   player.currentSong = player.queue[nextIndex];
   player.isPlaying = true;
   return true;
@@ -272,6 +289,7 @@ export function playPreviousTrack(): boolean {
   if (prevIndex == null) {
     return false;
   }
+  currentQueueIndex = prevIndex;
   player.currentSong = player.queue[prevIndex];
   player.isPlaying = true;
   return true;

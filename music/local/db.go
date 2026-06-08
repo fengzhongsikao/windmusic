@@ -96,21 +96,29 @@ func (d *libraryDB) loadScanCache() (*localScanCacheFile, error) {
 }
 
 func (d *libraryDB) saveScanCache(cache *localScanCacheFile) error {
+	if cache == nil {
+		cache = newScanCache()
+	}
+	if cache.Entries == nil {
+		cache.Entries = map[string]localScanCacheEntry{}
+	}
+
 	tx, err := d.db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM scan_entries`); err != nil {
-		return err
-	}
-	stmt, err := tx.Prepare(`INSERT INTO scan_entries(path, mod_time_unix, song_json) VALUES(?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO scan_entries(path, mod_time_unix, song_json) VALUES(?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			mod_time_unix = excluded.mod_time_unix,
+			song_json = excluded.song_json`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
+	alive := make([]string, 0, len(cache.Entries))
 	for path, entry := range cache.Entries {
 		payload, err := json.Marshal(entry.Song)
 		if err != nil {
@@ -119,6 +127,10 @@ func (d *libraryDB) saveScanCache(cache *localScanCacheFile) error {
 		if _, err := stmt.Exec(path, entry.ModTimeUnix, string(payload)); err != nil {
 			return err
 		}
+		alive = append(alive, path)
+	}
+	if err := deleteStalePaths(tx, "scan_entries", alive); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -152,21 +164,78 @@ func (d *libraryDB) saveExtras(extras *localExtrasFile) error {
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.Exec(`DELETE FROM song_extras`); err != nil {
-		return err
-	}
-	stmt, err := tx.Prepare(`INSERT INTO song_extras(path, cover_key, lyric) VALUES(?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO song_extras(path, cover_key, lyric) VALUES(?, ?, ?)
+		ON CONFLICT(path) DO UPDATE SET
+			cover_key = excluded.cover_key,
+			lyric = excluded.lyric`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
+	alive := make([]string, 0, len(extras.Entries))
 	for path, entry := range extras.Entries {
 		if _, err := stmt.Exec(path, strings.TrimSpace(entry.CoverKey), entry.Lyric); err != nil {
 			return err
 		}
+		alive = append(alive, path)
+	}
+	if err := deleteStalePaths(tx, "song_extras", alive); err != nil {
+		return err
 	}
 	return tx.Commit()
+}
+
+func deleteStalePaths(tx *sql.Tx, table string, alive []string) error {
+	if len(alive) == 0 {
+		_, err := tx.Exec(`DELETE FROM ` + table)
+		return err
+	}
+
+	aliveSet := make(map[string]struct{}, len(alive))
+	for _, path := range alive {
+		aliveSet[path] = struct{}{}
+	}
+
+	rows, err := tx.Query(`SELECT path FROM ` + table)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	stale := make([]string, 0)
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			return err
+		}
+		if _, ok := aliveSet[path]; !ok {
+			stale = append(stale, path)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	const chunkSize = 400
+	for i := 0; i < len(stale); i += chunkSize {
+		end := i + chunkSize
+		if end > len(stale) {
+			end = len(stale)
+		}
+		chunk := stale[i:end]
+		placeholders := make([]string, len(chunk))
+		args := make([]any, len(chunk))
+		for j, path := range chunk {
+			placeholders[j] = "?"
+			args[j] = path
+		}
+		query := `DELETE FROM ` + table + ` WHERE path IN (` + strings.Join(placeholders, ",") + `)`
+		if _, err := tx.Exec(query, args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *LocalLibraryStore) ensureLibraryDB() error {

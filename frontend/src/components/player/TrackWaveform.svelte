@@ -8,7 +8,7 @@
   } from '@/stores/playback/audioEngine';
   import { player } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
-  import { loadWaveformPeaks } from '@/lib/playback/waveformPeaks';
+  import { loadWaveformPeaks, shouldFetchWaveformPeaks } from '@/lib/playback/waveformPeaks';
   import type { WaveformSpreadMode } from '@/lib/playback/waveformSpread';
   import {
     computeRestBarHeights,
@@ -199,6 +199,10 @@
 
     peaksSourceUrl = sourceUrl;
     waveformPeaks = null;
+
+    if (!shouldFetchWaveformPeaks(sourceUrl)) {
+      return;
+    }
 
     void loadWaveformPeaks(sourceUrl).then((peaks) => {
       if (peaksSourceUrl === sourceUrl) {

@@ -71,8 +71,9 @@
         }
       }
     }
-    if (localCovers || coverByPath) {
+    if (localCovers) {
       for (const key of lookupKeys) {
+        void localLibrary.coverTickByPath[key];
         const fromStore = localLibrary.coverByPath[key]?.trim();
         if (fromStore) {
           return fromStore;

@@ -1,7 +1,7 @@
 import {
   fetchLocalSongCovers,
+  GetLocalFolderSongs,
   GetLocalLibrarySnapshot,
-  GetLocalLibraryTracksIndex,
   ScanLocalLibrary,
   localSongToTrackItem,
   type LocalSong,
@@ -23,15 +23,25 @@ type LocalLibrarySnapshot = {
 
 let lastMetaKey = '';
 let syncInitialized = false;
-let tracksIndexToken = 0;
+let tabLoadToken = 0;
 let coverLoadToken = 0;
 let pendingCoverUpdates: Record<string, string> = {};
 let coverFlushScheduled = false;
 let localPageActive = false;
 let activeTabId = LOCAL_ALL_TAB_ID;
+let wasScanning = false;
 
 const COVER_CHUNK = 40;
 const COVER_FLUSH_PER_FRAME = 12;
+
+function isTabLoaded(tabId: string): boolean {
+  return tabId in localLibrary.loadedTabIds;
+}
+
+function applyCoverForPath(path: string, cover: string) {
+  localLibrary.coverByPath[path] = cover;
+  localLibrary.coverTickByPath[path] = (localLibrary.coverTickByPath[path] ?? 0) + 1;
+}
 
 function flushCoverUpdates() {
   coverFlushScheduled = false;
@@ -43,7 +53,7 @@ function flushCoverUpdates() {
   pendingCoverUpdates = {};
   const slice = entries.slice(0, COVER_FLUSH_PER_FRAME);
   for (const [path, cover] of slice) {
-    localLibrary.coverByPath[path] = cover;
+    applyCoverForPath(path, cover);
   }
 
   if (entries.length > COVER_FLUSH_PER_FRAME) {
@@ -64,8 +74,8 @@ function scheduleCoverFlush() {
 
 function collectUniqueLibraryPaths(): string[] {
   const paths = new Set<string>();
-  for (const tracks of Object.values(localLibrary.tracksByTab)) {
-    for (const track of tracks) {
+  for (const tabId of Object.keys(localLibrary.loadedTabIds)) {
+    for (const track of localLibrary.tracksByTab[tabId] ?? []) {
       const path = String(track.listKey ?? track.id).trim();
       if (path) {
         paths.add(path);
@@ -158,7 +168,6 @@ function scheduleCoverPreloadAll() {
   };
 
   const start = () => void run();
-  // 曲目列表先稳定，再在空闲时灌封面，避免和 Tab 点击抢主线程
   setTimeout(() => {
     if (!localPageActive) {
       return;
@@ -171,9 +180,9 @@ function scheduleCoverPreloadAll() {
   }, 600);
 }
 
-/** 进入本地页或索引刚就绪时：先拉当前 Tab 可见封面，再后台预加载其余 */
+/** 进入本地页或 Tab 曲目就绪时：先拉当前 Tab 可见封面，再后台预加载其余 */
 function ensureCoversForCurrentView() {
-  if (!localPageActive || !localLibrary.tracksIndexReady) {
+  if (!localPageActive || !isTabLoaded(activeTabId)) {
     return;
   }
   const paths = collectPathsForTab(activeTabId).slice(0, COVER_CHUNK * 2);
@@ -188,6 +197,17 @@ function clearCoverCache() {
   pendingCoverUpdates = {};
   coverFlushScheduled = false;
   localLibrary.coverByPath = {};
+  localLibrary.coverTickByPath = {};
+}
+
+/** 写入本地封面缓存并 bump 对应 path 的 tick */
+export function applyLocalCoverForPath(path: string, cover: string) {
+  applyCoverForPath(path, cover);
+}
+
+/** 读取已缓存的本地封面 URL */
+export function localCoverUrl(path: string): string {
+  return localLibrary.coverByPath[path]?.trim() ?? '';
 }
 
 export const localLibrary = $state({
@@ -195,10 +215,11 @@ export const localLibrary = $state({
   folderAliases: {} as Record<string, string>,
   folderCounts: {} as Record<string, number>,
   tracksByTab: {} as Record<string, TrackItem[]>,
+  loadedTabIds: {} as Record<string, true>,
+  loadingTabId: null as string | null,
   songById: new Map<string, LocalSong>(),
-  tracksIndexReady: false,
-  tracksIndexLoading: false,
   coverByPath: {} as Record<string, string>,
+  coverTickByPath: {} as Record<string, number>,
   revision: 0,
   loading: false,
   scanning: false,
@@ -210,8 +231,8 @@ export function setLocalPageActive(active: boolean): void {
   if (!active) {
     return;
   }
-  if (localLibrary.loaded && !localLibrary.tracksIndexReady) {
-    void loadTracksIndex();
+  if (localLibrary.loaded && !isTabLoaded(activeTabId)) {
+    void loadTabTracks(activeTabId);
     return;
   }
   ensureCoversForCurrentView();
@@ -219,7 +240,11 @@ export function setLocalPageActive(active: boolean): void {
 
 export function setLocalActiveFolderTab(tabId: string): void {
   activeTabId = tabId;
-  if (!localPageActive || !localLibrary.tracksIndexReady) {
+  if (!localPageActive) {
+    return;
+  }
+  if (!isTabLoaded(tabId)) {
+    void loadTabTracks(tabId);
     return;
   }
   const paths = collectPathsForTab(tabId).slice(0, COVER_CHUNK * 2);
@@ -256,25 +281,18 @@ function buildTracksFromSongs(songs: LocalSong[]): TrackItem[] {
   return tracks;
 }
 
-function applyTracksIndex(index: Record<string, LocalSong[]>) {
-  const tracksByTab: Record<string, TrackItem[]> = {};
-  localLibrary.songById = new Map();
-
-  for (const [tabId, songs] of Object.entries(index)) {
-    tracksByTab[tabId] = buildTracksFromSongs(songs ?? []);
-  }
-
-  localLibrary.tracksByTab = tracksByTab;
-  localLibrary.tracksIndexReady = true;
+function applyTabTracks(tabId: string, songs: LocalSong[]) {
+  localLibrary.tracksByTab[tabId] = buildTracksFromSongs(songs ?? []);
+  localLibrary.loadedTabIds[tabId] = true;
   localLibrary.revision += 1;
 }
 
 function invalidateTracksIndex() {
-  tracksIndexToken += 1;
-  localLibrary.tracksIndexLoading = false;
+  tabLoadToken += 1;
+  localLibrary.loadingTabId = null;
   localLibrary.tracksByTab = {};
+  localLibrary.loadedTabIds = {};
   localLibrary.songById = new Map();
-  localLibrary.tracksIndexReady = false;
   localLibrary.revision += 1;
 }
 
@@ -302,47 +320,60 @@ function applySnapshot(snapshot: LocalLibrarySnapshot) {
   localLibrary.loaded = true;
 
   if (localPageActive) {
-    void loadTracksIndex();
+    void loadTabTracks(activeTabId);
   }
 }
 
-function tracksIndexHasSongs(): boolean {
-  return Object.values(localLibrary.tracksByTab).some((tracks) => tracks.length > 0);
+function tabCountsHaveSongs(tabId: string): boolean {
+  return (localLibrary.folderCounts[tabId] ?? 0) > 0;
 }
 
-function snapshotCountsHaveSongs(): boolean {
-  return Object.values(localLibrary.folderCounts).some((count) => count > 0);
-}
-
-/** 一次 IPC 拉取后端按文件夹分好的曲目索引（与扫描结构一致） */
-export async function loadTracksIndex(): Promise<void> {
-  if (
-    localLibrary.tracksIndexReady &&
-    (tracksIndexHasSongs() || !snapshotCountsHaveSongs())
-  ) {
+/** 按 Tab 懒加载曲目（一次 IPC 只拉当前文件夹） */
+export async function loadTabTracks(tabId: string): Promise<void> {
+  if (isTabLoaded(tabId)) {
     ensureCoversForCurrentView();
     return;
   }
 
-  const token = ++tracksIndexToken;
-  localLibrary.tracksIndexLoading = true;
+  const token = ++tabLoadToken;
+  localLibrary.loadingTabId = tabId;
 
   try {
-    const index = (await GetLocalLibraryTracksIndex()) as Record<string, LocalSong[]>;
-    if (tracksIndexToken !== token) {
+    const songs = (await GetLocalFolderSongs(tabId)) as LocalSong[];
+    if (tabLoadToken !== token) {
       return;
     }
-    applyTracksIndex(index ?? {});
+    applyTabTracks(tabId, songs ?? []);
     ensureCoversForCurrentView();
   } catch {
-    if (tracksIndexToken === token) {
-      invalidateTracksIndex();
+    if (tabLoadToken === token) {
+      applyTabTracks(tabId, []);
     }
   } finally {
-    if (tracksIndexToken === token) {
-      localLibrary.tracksIndexLoading = false;
+    if (tabLoadToken === token) {
+      localLibrary.loadingTabId = null;
     }
   }
+}
+
+/** @deprecated 使用 loadTabTracks；保留兼容旧调用 */
+export async function loadTracksIndex(): Promise<void> {
+  await loadTabTracks(activeTabId);
+}
+
+export function isLocalTabLoaded(tabId: string): boolean {
+  return isTabLoaded(tabId);
+}
+
+export function isLocalTabLoading(tabId: string): boolean {
+  return localLibrary.loadingTabId === tabId;
+}
+
+export function localTabHasTracks(tabId: string): boolean {
+  if (isTabLoaded(tabId)) {
+    return (localLibrary.tracksByTab[tabId]?.length ?? 0) > 0;
+  }
+  return tabCountsHaveSongs(tabId);
 }
 
 export function initLocalLibrarySync(): () => void {
@@ -355,7 +386,15 @@ export function initLocalLibrarySync(): () => void {
     applySnapshot(normalizeSnapshot(payload));
   });
   const offScanning = EventsOn(LOCAL_LIBRARY_SCANNING_EVENT, (scanning: boolean) => {
-    localLibrary.scanning = Boolean(scanning);
+    const nextScanning = Boolean(scanning);
+    if (wasScanning && !nextScanning && localLibrary.loaded) {
+      invalidateTracksIndex();
+      if (localPageActive) {
+        void loadTabTracks(activeTabId);
+      }
+    }
+    wasScanning = nextScanning;
+    localLibrary.scanning = nextScanning;
   });
 
   localLibrary.loading = true;

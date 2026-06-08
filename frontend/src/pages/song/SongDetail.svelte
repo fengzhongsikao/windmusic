@@ -9,10 +9,12 @@
   import { lrcRaw, lyricLoading, lyricError } from '@/stores/playback/lyrics';
   import { audioCurrentTime, audioLoading, audioError, seekAudio } from '@/stores/playback/audioEngine';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
-  import defaultCover from '@/assets/images/default.jpg';
+  import { trackPlaybackKey } from '@/stores/playback/lyrics';
+  import { bindPlayerTrackCover } from '@/lib/playback/playerTrackCover.svelte';
 
   let track = $derived(player.currentSong);
-  let coverSrc = $derived(track.coverUrl?.trim() || defaultCover);
+  let trackKey = $derived(trackPlaybackKey(track));
+  const cover = bindPlayerTrackCover(() => player.currentSong);
   let currentTime = $derived($audioCurrentTime);
 
   let lyricsContainerEl = $state<HTMLDivElement | null>(null);
@@ -71,7 +73,9 @@
           class:square={coverShape === 'square'}
           class:spinning={player.isPlaying && coverSpin}
         >
-          <img src={coverSrc} alt={`${track.title} 封面`} class="cover-img" />
+          {#key trackKey}
+          <img src={cover.displayedCover} alt={`${track.title} 封面`} class="cover-img" />
+          {/key}
         </div>
       </div>
 

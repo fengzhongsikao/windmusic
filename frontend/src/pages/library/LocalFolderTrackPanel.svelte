@@ -3,7 +3,7 @@
   import type { TrackItem } from '@/lib/playback/track';
   import type { LocalSortOption } from '@/lib/library/localTrackSort';
   import { localSongToPlayerTrack } from '@/lib/library/localMusic';
-  import { LOCAL_ALL_TAB_ID, localLibrary } from '@/stores/library/localLibrary.svelte';
+  import { LOCAL_ALL_TAB_ID, localCoverUrl, localLibrary } from '@/stores/library/localLibrary.svelte';
   import { player, type PlayerTrack } from '@/stores/playback/player.svelte';
 
   interface Props {
@@ -31,7 +31,7 @@
         coverUrl: track.coverUrl,
       };
     }
-    return localSongToPlayerTrack(song, localLibrary.coverByPath[song.filePath]);
+    return localSongToPlayerTrack(song, localCoverUrl(song.filePath));
   }
 </script>
 

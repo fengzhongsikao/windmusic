@@ -22,6 +22,24 @@ let lastPlaying = false;
 let syncingFromAudio = false;
 let switchingTrack = false;
 let attachedAudioEl: HTMLAudioElement | null = null;
+let timeUpdateRaf = 0;
+
+function cancelScheduledTimeUpdate() {
+  if (timeUpdateRaf) {
+    cancelAnimationFrame(timeUpdateRaf);
+    timeUpdateRaf = 0;
+  }
+}
+
+function scheduleTimeStateUpdate() {
+  if (timeUpdateRaf) {
+    return;
+  }
+  timeUpdateRaf = requestAnimationFrame(() => {
+    timeUpdateRaf = 0;
+    flushTimeState();
+  });
+}
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -97,15 +115,17 @@ function publishTimeState(currentTime: number, duration: number) {
 }
 
 function flushTimeState() {
+  cancelScheduledTimeUpdate();
   const { currentTime, duration } = readTimeState();
   publishTimeState(currentTime, duration);
 }
 
 function updateTimeState() {
-  flushTimeState();
+  scheduleTimeStateUpdate();
 }
 
 function resetPublishedTimeState() {
+  cancelScheduledTimeUpdate();
   audioCurrentTime.set(0);
   audioDuration.set(0);
 }

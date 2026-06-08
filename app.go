@@ -26,6 +26,7 @@ type App struct {
 	discover    *cache.DiscoverCache
 	lyricCache  *cache.LyricCache
 	searchCache *cache.SearchCache
+	musicURLCache *cache.MusicURLCache
 
 	localScanMu      sync.Mutex
 	localScanRunning bool
@@ -34,9 +35,10 @@ type App struct {
 
 func NewApp() *App {
 	app := &App{
-		discover:    cache.NewDiscoverCache(),
-		lyricCache:  cache.NewLyricCache(),
-		searchCache: cache.NewSearchCache(),
+		discover:      cache.NewDiscoverCache(),
+		lyricCache:    cache.NewLyricCache(),
+		searchCache:   cache.NewSearchCache(),
+		musicURLCache: cache.NewMusicURLCache(),
 	}
 	app.localAudio = localmusic.NewAudioServer(&app.local)
 	app.local.SetCoverURLBuilder(func(coverKey string) string {
@@ -60,7 +62,15 @@ func (a *App) Search(sourceID, platform, keyword string, page int) (*models.Sear
 }
 
 func (a *App) GetMusicURL(sourceID, platform, quality, metaJSON string) (string, error) {
-	return metingmusic.GetMusicURL(sourceID, platform, quality, metaJSON)
+	if url, ok := a.musicURLCache.Get(sourceID, platform, quality, metaJSON); ok {
+		return url, nil
+	}
+	url, err := metingmusic.GetMusicURL(sourceID, platform, quality, metaJSON)
+	if err != nil {
+		return "", err
+	}
+	a.musicURLCache.Set(sourceID, platform, quality, metaJSON, url)
+	return url, nil
 }
 
 func (a *App) GetLyric(sourceID, platform, metaJSON string) (*models.LyricInfo, error) {

@@ -12,12 +12,20 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	localAudioRoutePrefix = "/local-audio/"
 	localCoverRoutePrefix = "/local-cover/"
+	streamURLCacheTTL     = 60 * time.Second
 )
+
+type streamCacheEntry struct {
+	url      string
+	modUnix  int64
+	cachedAt time.Time
+}
 
 // AudioServer serves local library files over loopback HTTP with range request support.
 // A dedicated server avoids Wails WebView host-check failures on <audio> subresource requests.
@@ -25,9 +33,10 @@ type AudioServer struct {
 	store  *LocalLibraryStore
 	secret []byte
 
-	mu      sync.RWMutex
-	baseURL string
-	server  *http.Server
+	mu          sync.RWMutex
+	baseURL     string
+	server      *http.Server
+	streamCache map[string]streamCacheEntry
 }
 
 func NewAudioServer(store *LocalLibraryStore) *AudioServer {
@@ -40,6 +49,7 @@ func NewAudioServer(store *LocalLibraryStore) *AudioServer {
 			}
 			return secret
 		}(),
+		streamCache: map[string]streamCacheEntry{},
 	}
 	if err := s.startLoopbackServer(); err != nil {
 		panic(fmt.Sprintf("local audio server: start loopback server: %v", err))
@@ -89,7 +99,21 @@ func (s *AudioServer) StreamURL(filePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if _, err := os.Stat(abs); err != nil {
+
+	now := time.Now()
+	s.mu.RLock()
+	if entry, ok := s.streamCache[abs]; ok &&
+		now.Sub(entry.cachedAt) < streamURLCacheTTL {
+		s.mu.RUnlock()
+		if info, statErr := os.Stat(abs); statErr == nil && info.ModTime().Unix() == entry.modUnix {
+			return entry.url, nil
+		}
+	} else {
+		s.mu.RUnlock()
+	}
+
+	info, err := os.Stat(abs)
+	if err != nil {
 		return "", err
 	}
 
@@ -97,7 +121,17 @@ func (s *AudioServer) StreamURL(filePath string) (string, error) {
 	if base == "" {
 		return "", fmt.Errorf("local audio server is not ready")
 	}
-	return base + localAudioRoutePrefix + s.signToken(abs), nil
+	url := base + localAudioRoutePrefix + s.signToken(abs)
+
+	s.mu.Lock()
+	s.streamCache[abs] = streamCacheEntry{
+		url:      url,
+		modUnix:  info.ModTime().Unix(),
+		cachedAt: now,
+	}
+	s.mu.Unlock()
+
+	return url, nil
 }
 
 // CoverURL returns the loopback HTTP URL for a deduplicated cover key.

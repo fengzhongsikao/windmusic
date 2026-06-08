@@ -38,10 +38,30 @@ function extractPeaks(buffer: AudioBuffer, targetPeaks: number): Float32Array {
   return peaks;
 }
 
+/** 本地 loopback / 流媒体 URL 不做全文件 decode，改用 CSS motion 波形。 */
+export function shouldFetchWaveformPeaks(audioUrl: string): boolean {
+  const url = audioUrl.trim();
+  if (!url) {
+    return false;
+  }
+  if (url.includes('/local-audio/')) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url, window.location.href);
+    if (parsed.protocol === 'wails:') {
+      return false;
+    }
+  } catch {
+    // keep default allow for relative URLs
+  }
+  return true;
+}
+
 /** 从音频 URL 解码波形峰值（不接管 <audio> 播放，Wails 下可用）。 */
 export async function loadWaveformPeaks(audioUrl: string): Promise<Float32Array | null> {
   const url = audioUrl.trim();
-  if (!url) {
+  if (!url || !shouldFetchWaveformPeaks(url)) {
     return null;
   }
 

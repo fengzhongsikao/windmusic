@@ -27,6 +27,8 @@
     batchSize?: number;
     /** 真虚拟滚动，适合 500+ 行列表 */
     virtual?: boolean;
+    /** tracks 数量达到此值时自动启用 virtual（0 = 关闭）；显式 virtual={true} 仍优先 */
+    virtualAutoThreshold?: number;
     virtualRowHeight?: number;
     /** When set, only resets incremental batching when this key changes (not on every tracks ref change). */
     resetKey?: string | number;
@@ -59,6 +61,7 @@
     initialBatch = 80,
     batchSize = 80,
     virtual = false,
+    virtualAutoThreshold = 500,
     virtualRowHeight = 58,
     resetKey,
     listId,
@@ -73,7 +76,10 @@
   let loadMoreEl = $state<HTMLDivElement | null>(null);
   let scrollEl = $state<HTMLDivElement | null>(null);
 
-  const useVirtual = $derived(virtual && tracks.length > 0);
+  const useVirtual = $derived(
+    tracks.length > 0 &&
+      (virtual || (virtualAutoThreshold > 0 && tracks.length >= virtualAutoThreshold)),
+  );
   const useIncremental = $derived(!useVirtual && incremental);
   const showPlaylistAction = $derived(Boolean(resolvePlayerTrack));
   const visibleTracks = $derived(useIncremental ? tracks.slice(0, renderLimit) : tracks);

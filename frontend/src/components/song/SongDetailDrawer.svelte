@@ -8,36 +8,10 @@
   import SongDetail from '@/pages/song/SongDetail.svelte';
   import { player, closeImmersiveView } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
-  import { fetchCoverUrl } from '@/lib/wails/wailsPlayer';
-  import defaultCover from '@/assets/images/default.jpg';
+  import { bindPlayerTrackCover } from '@/lib/playback/playerTrackCover.svelte';
 
-  let coverSrc = $derived(player.currentSong.coverUrl?.trim() || defaultCover);
-  let displayedCover = $state(defaultCover);
+  const cover = bindPlayerTrackCover(() => player.currentSong);
   let reservePlayerBar = $derived(!playerUiSettings.detailHidePlayerBar);
-
-  $effect(() => {
-    const target = coverSrc;
-    let cancelled = false;
-
-    void (async () => {
-      const resolved =
-        !target || target === defaultCover ? await fetchCoverUrl(player.currentSong) : target;
-      if (cancelled) return;
-
-      const img = new Image();
-      img.onload = () => {
-        if (!cancelled) displayedCover = resolved;
-      };
-      img.onerror = () => {
-        if (!cancelled) displayedCover = defaultCover;
-      };
-      img.src = resolved;
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  });
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && player.viewMode === 'immersive') {
@@ -52,7 +26,7 @@
   <div class="detail-layer" role="presentation">
     <div
       class="detail-bg"
-      style:background-image="url('{displayedCover}')"
+      style:background-image="url('{cover.displayedCover}')"
       aria-hidden="true"
     ></div>
     <div class="detail-scrim" aria-hidden="true"></div>

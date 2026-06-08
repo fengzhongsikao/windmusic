@@ -15,7 +15,9 @@
   } from '@/lib/library/localMusic';
   import {
     LOCAL_ALL_TAB_ID,
-    loadTracksIndex,
+    isLocalTabLoaded,
+    isLocalTabLoading,
+    loadTabTracks,
     localLibrary,
     scanLocalLibrary,
     setLocalActiveFolderTab,
@@ -38,7 +40,7 @@
   let trackSort = $state<LocalSortOption>('title-asc');
 
   const folderAliases = $derived(localLibrary.folderAliases);
-  const tracksIndexLoading = $derived(localLibrary.tracksIndexLoading);
+  const tracksIndexLoading = $derived(isLocalTabLoading(activeFolderTab));
 
   const folders = $derived(localLibrary.folders);
   const scanning = $derived(localLibrary.scanning);
@@ -63,7 +65,7 @@
     sortLocalTracks(localLibrary.tracksByTab[activeFolderTab] ?? [], trackSort),
   );
   const showSortControl = $derived(
-    localLibrary.tracksIndexReady &&
+    isLocalTabLoaded(activeFolderTab) &&
       (localLibrary.tracksByTab[activeFolderTab] ?? []).length > 0,
   );
   const activeTabMeta = $derived.by(
@@ -72,8 +74,8 @@
   const isLoadingAudio = $derived($audioLoading);
 
   $effect(() => {
-    if (localLibrary.loaded) {
-      void loadTracksIndex();
+    if (localLibrary.loaded && activeFolderTab) {
+      void loadTabTracks(activeFolderTab);
     }
   });
 
@@ -368,7 +370,7 @@
       </div>
     </div>
 
-    {#if (scanning || loading || tracksIndexLoading) && !localLibrary.tracksIndexReady}
+    {#if (scanning || loading || tracksIndexLoading) && !isLocalTabLoaded(activeFolderTab)}
       <p class="empty-hint">
         {scanning ? '正在扫描音乐文件…' : tracksIndexLoading ? '正在加载歌曲…' : '正在加载…'}
       </p>
