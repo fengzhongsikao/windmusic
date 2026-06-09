@@ -14,6 +14,10 @@ export function AddPlaylistSong(arg1, arg2) {
   return window['go']['main']['App']['AddPlaylistSong'](arg1, arg2);
 }
 
+export function ClearLocalLibraryCache() {
+  return window['go']['main']['App']['ClearLocalLibraryCache']();
+}
+
 export function ClearRecent() {
   return window['go']['main']['App']['ClearRecent']();
 }

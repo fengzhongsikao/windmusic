@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	models "windmusic/internal/music"
 	localmusic "windmusic/music/local"
 
@@ -21,8 +23,11 @@ func (a *App) startLocalLibraryScan() {
 }
 
 func (a *App) runLocalLibraryScan() {
-	a.emitLocalLibraryScanning(true)
-	defer a.emitLocalLibraryScanning(false)
+	start := time.Now()
+	a.emitLocalLibraryScanning(true, 0)
+	defer func() {
+		a.emitLocalLibraryScanning(false, time.Since(start).Milliseconds())
+	}()
 
 	if _, err := a.local.Scan(); err != nil {
 		runtime.LogErrorf(a.ctx, "local library scan failed: %v", err)
@@ -122,6 +127,15 @@ func (a *App) GetLocalLibraryTracksIndex() (map[string][]models.LocalSong, error
 }
 
 func (a *App) ScanLocalLibrary() error {
+	a.startLocalLibraryScan()
+	return nil
+}
+
+func (a *App) ClearLocalLibraryCache() error {
+	if err := a.local.ClearCache(); err != nil {
+		return err
+	}
+	a.emitLocalLibrarySnapshot()
 	a.startLocalLibraryScan()
 	return nil
 }

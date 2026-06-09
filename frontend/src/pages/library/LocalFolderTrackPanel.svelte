@@ -3,7 +3,12 @@
   import type { TrackItem } from '@/lib/playback/track';
   import type { LocalSortOption } from '@/lib/library/localTrackSort';
   import { localSongToPlayerTrack } from '@/lib/library/localMusic';
-  import { LOCAL_ALL_TAB_ID, localCoverUrl, localLibrary } from '@/stores/library/localLibrary.svelte';
+  import {
+    isLocalPageActive,
+    LOCAL_ALL_TAB_ID,
+    localCoverUrl,
+    localLibrary,
+  } from '@/stores/library/localLibrary.svelte';
   import { player, type PlayerTrack } from '@/stores/playback/player.svelte';
 
   interface Props {
@@ -17,7 +22,8 @@
   let { tabId, tabLabel, tracks, sortKey, onSelect }: Props = $props();
 
   const displayActiveId = $derived(player.currentSong.id);
-  const listId = $derived(`${tabId}:${sortKey}`);
+  const listId = $derived(`${tabId}:${sortKey}:${localLibrary.revision}`);
+  const listPaused = $derived(!isLocalPageActive());
 
   function resolvePlayerTrack(track: TrackItem): PlayerTrack {
     const song = localLibrary.songById.get(String(track.id));
@@ -49,6 +55,7 @@
       {tracks}
       listId={listId}
       virtualAutoThreshold={500}
+      paused={listPaused}
       activeId={displayActiveId}
       {onSelect}
       {resolvePlayerTrack}

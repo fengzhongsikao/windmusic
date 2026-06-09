@@ -86,30 +86,43 @@
   const hasMoreTracks = $derived(useIncremental && renderLimit < tracks.length);
 
   const virtualizer = createVirtualizer({
-    get count() {
-      return tracks.length;
-    },
-    getScrollElement: () => scrollEl,
+    count: 0,
+    getScrollElement: () => null,
     estimateSize: () => virtualRowHeight,
     overscan: 12,
   });
 
-  // 列表在 display:none 容器里预挂载时，虚拟滚动视口高度为 0，切回页面后需重新测量
+  // Virtualizer must stay wired while the panel is hidden (display:none); remeasure on show.
+  // `paused` only gates incremental infinite scroll, not virtual list setup.
   $effect(() => {
-    if (!useVirtual || !scrollEl) {
+    if (!useVirtual) {
       return;
     }
     const el = scrollEl;
-    tracks.length;
+    const count = tracks.length;
+    if (!el || count === 0) {
+      return;
+    }
+
+    const instance = get(virtualizer);
+    instance.setOptions({
+      count,
+      getScrollElement: () => el,
+    });
 
     const remeasure = () => {
-      get(virtualizer).measure();
+      instance.measure();
     };
 
     remeasure();
+    const raf = requestAnimationFrame(remeasure);
+
     const observer = new ResizeObserver(remeasure);
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
   });
 
   $effect(() => {
@@ -270,7 +283,7 @@
     pointer-events: none;
   }
 
-  .track-row-host {
+  .track-row-host:not(.track-row-virtual) {
     display: contents;
   }
 
@@ -579,6 +592,7 @@
   }
 
   .track-list.virtual-mode .track-list-scroll {
+    min-height: 240px;
     max-height: min(70vh, calc(100vh - 240px));
     overflow-y: auto;
     overscroll-behavior: contain;

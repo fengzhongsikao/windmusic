@@ -10,7 +10,7 @@
   import routes from '@/routes';
   import { initAudioEngine } from '@/stores/playback/audioEngine';
   import '@/stores/sync/appDataSync';
-  import { localLibrary, setLocalPageActive } from '@/stores/library/localLibrary.svelte';
+  import { setLocalPageActive } from '@/stores/library/localLibrary.svelte';
   import { player } from '@/stores/playback/player.svelte';
   import { playerUiSettings } from '@/stores/playback/playerSettings.svelte';
 
@@ -30,7 +30,7 @@
   });
 
   $effect(() => {
-    if (localLibrary.loaded || isLocalRoute) {
+    if (isLocalRoute) {
       localPageMounted = true;
     }
   });

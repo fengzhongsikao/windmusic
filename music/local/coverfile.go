@@ -68,6 +68,28 @@ func (c *coverFileStore) ReadDataURL(key string) (string, error) {
 	return fmt.Sprintf("data:%s;base64,%s", mime, encoded), nil
 }
 
+func (c *coverFileStore) ClearAll() error {
+	if c == nil || c.dir == "" {
+		return nil
+	}
+	entries, err := os.ReadDir(c.dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if err := os.Remove(filepath.Join(c.dir, entry.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func parseDataURL(dataURL string) (mime string, raw []byte, err error) {
 	dataURL = strings.TrimSpace(dataURL)
 	if !strings.HasPrefix(dataURL, "data:") {

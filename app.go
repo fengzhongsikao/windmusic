@@ -108,9 +108,9 @@ func (a *App) emitLocalLibrarySnapshot() {
 	runtime.EventsEmit(a.ctx, localmusic.EventLibraryUpdated, snapshot)
 }
 
-func (a *App) emitLocalLibraryScanning(scanning bool) {
+func (a *App) emitLocalLibraryScanning(scanning bool, durationMs int64) {
 	if a.ctx == nil {
 		return
 	}
-	runtime.EventsEmit(a.ctx, localmusic.EventLibraryScanning, scanning)
+	runtime.EventsEmit(a.ctx, localmusic.EventLibraryScanning, scanning, durationMs)
 }

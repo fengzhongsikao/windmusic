@@ -238,6 +238,17 @@ func deleteStalePaths(tx *sql.Tx, table string, alive []string) error {
 	return nil
 }
 
+func (d *libraryDB) clearAll() error {
+	if d == nil || d.db == nil {
+		return nil
+	}
+	if _, err := d.db.Exec(`DELETE FROM scan_entries`); err != nil {
+		return err
+	}
+	_, err := d.db.Exec(`DELETE FROM song_extras`)
+	return err
+}
+
 func (s *LocalLibraryStore) ensureLibraryDB() error {
 	if s.db != nil {
 		return nil

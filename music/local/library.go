@@ -2,21 +2,19 @@ package local
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	stdruntime "runtime"
 
 	models "windmusic/internal/music"
 	"windmusic/music/appdata"
 
-	"github.com/dhowden/tag"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -949,8 +947,25 @@ func fileInMusicFolders(filePath string, folders []string) bool {
 	return false
 }
 
-func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile, coverFiles *coverFileStore, cacheMu *sync.Mutex) ([]models.LocalSong, map[string]struct{}, error) {
-	songs := make([]models.LocalSong, 0)
+type scanCandidate struct {
+	absPath string
+	modUnix int64
+	size    int64
+}
+
+func scanWorkerCount() int {
+	n := stdruntime.NumCPU()
+	if n < 4 {
+		return 4
+	}
+	if n > 12 {
+		return 12
+	}
+	return n
+}
+
+func scanFolder(root string, cache *localScanCacheFile, _ *localExtrasFile, _ *coverFileStore, cacheMu *sync.Mutex) ([]models.LocalSong, map[string]struct{}, error) {
+	candidates := make([]scanCandidate, 0, 256)
 	alive := make(map[string]struct{})
 
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -975,33 +990,72 @@ func scanFolder(root string, cache *localScanCacheFile, extras *localExtrasFile,
 			absPath = path
 		}
 		alive[absPath] = struct{}{}
-
-		modUnix := info.ModTime().Unix()
-		cacheMu.Lock()
-		cached, ok := cache.Entries[absPath]
-		cacheMu.Unlock()
-		if ok && cached.ModTimeUnix == modUnix {
-			songs = append(songs, cached.Song)
-			return nil
-		}
-
-		song, songExtras, err := buildLocalSong(absPath, info)
-		if err != nil {
-			return nil
-		}
-		cacheMu.Lock()
-		cache.Entries[absPath] = localScanCacheEntry{
-			ModTimeUnix: modUnix,
-			Song:        song,
-		}
-		persistSongExtra(extras, coverFiles, absPath, songExtras.CoverData, songExtras.Lyric)
-		cacheMu.Unlock()
-		songs = append(songs, song)
+		candidates = append(candidates, scanCandidate{
+			absPath: absPath,
+			modUnix: info.ModTime().Unix(),
+			size:    info.Size(),
+		})
 		return nil
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+
+	songs := make([]models.LocalSong, 0, len(candidates))
+	var songsMu sync.Mutex
+	pending := make([]scanCandidate, 0, len(candidates))
+
+	for _, candidate := range candidates {
+		cacheMu.Lock()
+		cached, ok := cache.Entries[candidate.absPath]
+		cacheMu.Unlock()
+		if ok && cached.ModTimeUnix == candidate.modUnix {
+			songsMu.Lock()
+			songs = append(songs, cached.Song)
+			songsMu.Unlock()
+			continue
+		}
+		pending = append(pending, candidate)
+	}
+
+	if len(pending) == 0 {
+		return songs, alive, nil
+	}
+
+	workers := scanWorkerCount()
+	if workers > len(pending) {
+		workers = len(pending)
+	}
+
+	jobs := make(chan scanCandidate)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			for candidate := range jobs {
+				song, err := buildLocalSongFast(candidate.absPath, candidate.size)
+				if err != nil {
+					continue
+				}
+				cacheMu.Lock()
+				cache.Entries[candidate.absPath] = localScanCacheEntry{
+					ModTimeUnix: candidate.modUnix,
+					Song:        song,
+				}
+				cacheMu.Unlock()
+				songsMu.Lock()
+				songs = append(songs, song)
+				songsMu.Unlock()
+			}
+		}()
+	}
+	for _, candidate := range pending {
+		jobs <- candidate
+	}
+	close(jobs)
+	wg.Wait()
+
 	return songs, alive, nil
 }
 
@@ -1046,24 +1100,39 @@ func (s *LocalLibraryStore) GetSongExtras(filePath string) (models.LocalSongExtr
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	folders, err := s.readFoldersLocked()
 	if err != nil {
+		s.mu.RUnlock()
 		return models.LocalSongExtras{}, err
 	}
 	if err := validatePathWithFolders(filePath, folders); err != nil {
+		s.mu.RUnlock()
 		return models.LocalSongExtras{}, err
 	}
 	abs, err := filepath.Abs(strings.TrimSpace(filePath))
 	if err != nil {
+		s.mu.RUnlock()
 		return models.LocalSongExtras{}, err
 	}
+	entry, ok := s.extras.Entries[abs]
+	needsLoad := !ok || strings.TrimSpace(entry.CoverKey) == ""
+	if !needsLoad && strings.ToLower(filepath.Ext(abs)) == ".mp3" && strings.TrimSpace(entry.Lyric) == "" {
+		needsLoad = true
+	}
+	s.mu.RUnlock()
 
-	if _, ok := s.extras.Entries[abs]; !ok {
+	if needsLoad {
+		if err := s.ensureSongExtrasForPath(abs); err != nil {
+			return models.LocalSongExtras{}, err
+		}
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	entry, ok = s.extras.Entries[abs]
+	if !ok {
 		return models.LocalSongExtras{}, nil
 	}
-	entry := s.extras.Entries[abs]
 	return models.LocalSongExtras{
 		CoverData: s.resolveCoverValue(entry.CoverKey),
 		Lyric:     entry.Lyric,
@@ -1077,14 +1146,14 @@ func (s *LocalLibraryStore) GetCovers(filePaths []string) (models.LocalCoverBatc
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	folders, err := s.readFoldersLocked()
 	if err != nil {
+		s.mu.RUnlock()
 		return models.LocalCoverBatch{}, err
 	}
 
 	allowed := make([]string, 0, len(filePaths))
+	missingCovers := make([]string, 0, len(filePaths))
 	for _, filePath := range filePaths {
 		filePath = strings.TrimSpace(filePath)
 		if filePath == "" {
@@ -1094,63 +1163,60 @@ func (s *LocalLibraryStore) GetCovers(filePaths []string) (models.LocalCoverBatc
 		if err != nil {
 			abs = filePath
 		}
-		if fileInMusicFolders(abs, folders) {
-			allowed = append(allowed, abs)
+		if !fileInMusicFolders(abs, folders) {
+			continue
+		}
+		allowed = append(allowed, abs)
+		entry, ok := s.extras.Entries[abs]
+		if !ok || strings.TrimSpace(entry.CoverKey) == "" {
+			missingCovers = append(missingCovers, abs)
 		}
 	}
+	s.mu.RUnlock()
+
+	for _, abs := range missingCovers {
+		_ = s.ensureSongExtrasForPath(abs)
+	}
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	return s.extras.buildCoverBatch(allowed, s.coverURL, s.coverFiles), nil
+}
+
+func buildLocalSongFast(absPath string, size int64) (models.LocalSong, error) {
+	ext := strings.ToLower(filepath.Ext(absPath))
+	tags := readBasicAudioTags(absPath)
+	duration := formatTrackDuration(tags.DurationSec)
+
+	return models.LocalSong{
+		ID:       absPath,
+		Title:    tags.Title,
+		Artist:   tags.Artist,
+		Album:    tags.Album,
+		Duration: duration,
+		FilePath: absPath,
+		Format:   strings.TrimPrefix(strings.ToUpper(ext), "."),
+		Size:     formatFileSize(size),
+	}, nil
 }
 
 func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSongExtras, error) {
 	ext := strings.ToLower(filepath.Ext(absPath))
-	base := strings.TrimSuffix(filepath.Base(absPath), ext)
-
-	title := base
-	artist := "未知艺术家"
-	album := ""
-	coverData := ""
-	durationSec := 0.0
-
-	file, err := os.Open(absPath)
-	if err == nil {
-		defer file.Close()
-		metadata, tagErr := tag.ReadFrom(file)
-		if tagErr == nil {
-			if v := strings.TrimSpace(metadata.Title()); v != "" {
-				title = v
-			}
-			if v := strings.TrimSpace(metadata.Artist()); v != "" {
-				artist = v
-			}
-			if v := strings.TrimSpace(metadata.Album()); v != "" {
-				album = v
-			}
-			if pic := metadata.Picture(); pic != nil && len(pic.Data) > 0 {
-				mime := strings.TrimSpace(pic.MIMEType)
-				if mime == "" {
-					mime = "image/jpeg"
-				}
-				encoded := base64.StdEncoding.EncodeToString(pic.Data)
-				coverData = fmt.Sprintf("data:%s;base64,%s", mime, encoded)
-			}
-			durationSec = DurationSecondsFromMetadata(metadata)
-		}
-		if durationSec <= 0 {
-			if _, seekErr := file.Seek(0, io.SeekStart); seekErr == nil {
-				durationSec = ProbeAudioDurationFromFile(file, ext, info.Size())
-			}
-		}
+	tags := readBasicAudioTags(absPath)
+	durationSec := tags.DurationSec
+	if durationSec <= 0 {
+		durationSec = probeAudioDuration(absPath, ext, info.Size())
 	}
 
+	coverData := extractEmbeddedCoverData(absPath)
 	lyric := readSidecarLyric(absPath)
-	duration := formatTrackDuration(durationSec)
 
 	return models.LocalSong{
 			ID:       absPath,
-			Title:    title,
-			Artist:   artist,
-			Album:    album,
-			Duration: duration,
+			Title:    tags.Title,
+			Artist:   tags.Artist,
+			Album:    tags.Album,
+			Duration: formatTrackDuration(durationSec),
 			FilePath: absPath,
 			Format:   strings.TrimPrefix(strings.ToUpper(ext), "."),
 			Size:     formatFileSize(info.Size()),
@@ -1158,6 +1224,45 @@ func buildLocalSong(absPath string, info fs.FileInfo) (models.LocalSong, localSo
 			CoverData: coverData,
 			Lyric:     lyric,
 		}, nil
+}
+
+func (s *LocalLibraryStore) ensureSongExtrasForPath(absPath string) error {
+	if err := s.ensureExtrasLoaded(); err != nil {
+		return err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.loadExtrasFromDiskLocked(); err != nil {
+		return err
+	}
+	if s.extras == nil {
+		s.extras = newExtrasFile()
+	}
+
+	entry, ok := s.extras.Entries[absPath]
+	needCover := !ok || strings.TrimSpace(entry.CoverKey) == ""
+	needLyric := !ok || (strings.TrimSpace(entry.Lyric) == "" && strings.ToLower(filepath.Ext(absPath)) == ".mp3")
+	if !needCover && !needLyric {
+		return nil
+	}
+
+	coverData := ""
+	lyric := ""
+	if needCover {
+		coverData = extractEmbeddedCoverData(absPath)
+	}
+	if needLyric {
+		lyric = readSidecarLyric(absPath)
+	}
+	if coverData == "" && lyric == "" {
+		return nil
+	}
+
+	persistSongExtra(s.extras, s.coverFiles, absPath, coverData, lyric)
+	s.extrasDirty = true
+	return s.flushExtrasLocked()
 }
 
 func readSidecarLyric(audioPath string) string {
@@ -1234,5 +1339,33 @@ func (s *LocalLibraryStore) ValidateLibraryPath(filePath string) error {
 		return err
 	}
 	return validatePathWithFolders(filePath, folders)
+}
+
+// ClearCache removes all rows from local-library.db and deletes cached cover files.
+// Configured music folders (local-folders.json) are not affected.
+func (s *LocalLibraryStore) ClearCache() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.ensureLibraryDB(); err != nil {
+		return err
+	}
+	if err := s.db.clearAll(); err != nil {
+		return err
+	}
+	if s.coverFiles != nil {
+		if err := s.coverFiles.ClearAll(); err != nil {
+			return err
+		}
+	}
+
+	s.cache = newScanCache()
+	s.cacheLoaded = true
+	s.cacheDirty = false
+	s.extras = newExtrasFile()
+	s.extrasLoaded = true
+	s.extrasDirty = false
+	s.invalidateFolderSongsIndex()
+	return nil
 }
 

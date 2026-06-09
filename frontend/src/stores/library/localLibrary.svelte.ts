@@ -30,12 +30,19 @@ let pendingCoverUpdates: Record<string, string> = {};
 let coverFlushScheduled = false;
 let localPageActive = false;
 let activeTabId = LOCAL_ALL_TAB_ID;
-let wasScanning = false;
-let scanStart = 0;
+function formatScanDuration(ms: number): string {
+  const seconds = ms / 1000;
+  if (seconds < 60) {
+    return `${seconds.toFixed(1)} 秒`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainSec = Math.round(seconds % 60);
+  return remainSec > 0 ? `${minutes} 分 ${remainSec} 秒` : `${minutes} 分`;
+}
 
 const COVER_CHUNK = 40;
 const COVER_FLUSH_PER_FRAME = 12;
-const SONG_PAGE_SIZE = 1500;
+const SONG_PAGE_SIZE = 3000;
 
 function isTabLoaded(tabId: string): boolean {
   return tabId in localLibrary.loadedTabIds;
@@ -229,14 +236,28 @@ export const localLibrary = $state({
   loaded: false,
 });
 
+export function isLocalPageActive(): boolean {
+  return localPageActive;
+}
+
 export function setLocalPageActive(active: boolean): void {
+  const wasActive = localPageActive;
   localPageActive = active;
   if (!active) {
     return;
   }
-  if (localLibrary.loaded && !isTabLoaded(activeTabId)) {
-    void loadTabTracks(activeTabId);
+  if (!localLibrary.loaded) {
     return;
+  }
+  const tabId = activeTabId;
+  const expected = localLibrary.folderCounts[tabId] ?? 0;
+  const loaded = localLibrary.tracksByTab[tabId]?.length ?? 0;
+  if (!isTabLoaded(tabId) || (expected > 0 && loaded === 0)) {
+    void loadTabTracks(tabId);
+    return;
+  }
+  if (!wasActive && loaded > 0) {
+    localLibrary.revision += 1;
   }
   ensureCoversForCurrentView();
 }
@@ -363,9 +384,18 @@ function tabCountsHaveSongs(tabId: string): boolean {
   return (localLibrary.folderCounts[tabId] ?? 0) > 0;
 }
 
+function tabNeedsLoad(tabId: string): boolean {
+  if (!isTabLoaded(tabId)) {
+    return true;
+  }
+  const expected = localLibrary.folderCounts[tabId] ?? 0;
+  const loaded = localLibrary.tracksByTab[tabId]?.length ?? 0;
+  return expected > 0 && loaded === 0;
+}
+
 /** 按 Tab 懒加载曲目（分页 IPC，避免大库一次性传输阻塞） */
 export async function loadTabTracks(tabId: string): Promise<void> {
-  if (isTabLoaded(tabId)) {
+  if (!tabNeedsLoad(tabId)) {
     ensureCoversForCurrentView();
     return;
   }
@@ -396,13 +426,16 @@ export async function loadTabTracks(tabId: string): Promise<void> {
       localLibrary.songById = songById;
       localLibrary.revision += 1;
 
-      if (offset === 0) {
+      if (offset === 0 && chunk.length > 0) {
         localLibrary.loadedTabIds[tabId] = true;
         ensureCoversForCurrentView();
       }
 
       offset += chunk.length;
       if (chunk.length === 0 || offset >= total) {
+        if (tracks.length > 0) {
+          localLibrary.loadedTabIds[tabId] = true;
+        }
         break;
       }
       await yieldToMain();
@@ -458,27 +491,24 @@ export function initLocalLibrarySync(): () => void {
   const offUpdated = EventsOn(LOCAL_LIBRARY_UPDATED_EVENT, (payload: music.LocalLibrarySnapshot) => {
     applySnapshot(normalizeSnapshot(payload));
   });
-  const offScanning = EventsOn(LOCAL_LIBRARY_SCANNING_EVENT, (scanning: boolean) => {
-    const nextScanning = Boolean(scanning);
-    if (!wasScanning && nextScanning) {
-      scanStart = Date.now();
-    }
-    if (wasScanning && !nextScanning) {
-      if (scanStart > 0) {
-        const seconds = (Date.now() - scanStart) / 1000;
-        toastSuccess(`本地音乐扫描完成，用时 ${seconds.toFixed(1)} 秒`);
-        scanStart = 0;
-      }
-      if (localLibrary.loaded) {
-        invalidateTracksIndex();
-        if (localPageActive) {
-          void loadTabTracks(activeTabId);
+  const offScanning = EventsOn(
+    LOCAL_LIBRARY_SCANNING_EVENT,
+    (scanning: boolean, durationMs?: number) => {
+      const nextScanning = Boolean(scanning);
+      if (!nextScanning) {
+        if (typeof durationMs === 'number') {
+          toastSuccess(`本地音乐扫描完成，用时 ${formatScanDuration(durationMs)}`);
+        }
+        if (localLibrary.loaded) {
+          invalidateTracksIndex();
+          if (localPageActive) {
+            void loadTabTracks(activeTabId);
+          }
         }
       }
-    }
-    wasScanning = nextScanning;
-    localLibrary.scanning = nextScanning;
-  });
+      localLibrary.scanning = nextScanning;
+    },
+  );
 
   localLibrary.loading = true;
   void GetLocalLibrarySnapshot()

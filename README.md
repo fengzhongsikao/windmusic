@@ -193,33 +193,148 @@ Release 标签为 `v{productVersion}`（如 `v1.0.5`）。也可在 GitHub **Act
 
 ## 数据存储
 
-### 应用数据目录（Go 读写）
-
-根目录：`os.UserConfigDir()/windmusic`（设置页也会显示 `GetSourceDataDir()` 返回的完整路径）
-
-| 文件 / 目录 | 格式 | 内容 |
-|-------------|------|------|
-| `favorites.json` | JSON | 收藏列表 |
-| `recent.json` | JSON | 最近播放 |
-| `playlists.json` | JSON | 自建歌单 |
-| `player-settings.json` | JSON | 音量、静音、随机、循环模式 |
-| `meting-settings.json` | JSON | Meting 节点列表与当前节点 |
-| `local-folders.json` | JSON | 本地音乐扫描的文件夹列表与别名 |
-| `local-library.db` | SQLite | 本地扫描缓存与歌曲扩展元数据（见下表） |
-| `local-covers/` | 文件目录 | 本地曲目内嵌封面（按哈希键存储图片文件） |
-
-**`local-library.db` 表结构**（WAL 模式，由 `music/local/db.go` 管理）：
-
-| 表 | 用途 |
-|----|------|
-| `scan_entries` | 扫描缓存：文件路径、修改时间、`LocalSong` JSON |
-| `song_extras` | 每首歌的封面键（指向 `local-covers/`）与歌词文本 |
+所有持久化数据由 Go 后端读写，前端不直接访问磁盘。根目录为 `os.UserConfigDir()/windmusic`（设置页通过 `GetSourceDataDir()` 显示完整路径）。
 
 各平台常见路径：
 
 - **macOS**：`~/Library/Application Support/windmusic/`
 - **Windows**：`%AppData%\windmusic\`
 - **Linux**：`~/.config/windmusic/`（或 `$XDG_CONFIG_HOME/windmusic/`）
+
+### 文件一览
+
+| 文件 / 目录 | 格式 | 管理模块 | 说明 |
+|-------------|------|----------|------|
+| `favorites.json` | JSON | `music/persist/favorites.go` | 收藏列表 |
+| `recent.json` | JSON | `music/persist/recent.go` | 最近播放 |
+| `playlists.json` | JSON | `music/persist/playlists.go` | 自建歌单 |
+| `player-settings.json` | JSON | `music/persist/player_settings.go` | 播放器 UI 偏好 |
+| `meting-settings.json` | JSON | `music/persist/meting_settings.go` | Meting API 节点配置 |
+| `local-folders.json` | JSON | `music/local/library.go` | 本地音乐文件夹列表与别名 |
+| `local-library.db` | SQLite | `music/local/db.go` | 本地扫描缓存与歌曲扩展元数据 |
+| `local-covers/` | 图片文件 | `music/local/coverfile.go` | 本地曲目内嵌封面（按哈希键去重存储） |
+
+发现页推荐结果仅保存在 Go 进程内存中（`music/cache/discover.go`，TTL 5 分钟），**不会**写入磁盘。
+
+### JSON 文件字段说明
+
+#### `favorites.json`
+
+对象数组，每项为一条收藏记录（`FavoriteSong`）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 曲目 ID（在线为平台 song id，本地为文件路径） |
+| `title` | string | 标题 |
+| `artist` | string | 艺术家 |
+| `album` | string | 专辑（可选） |
+| `duration` | string | 时长显示文本（可选） |
+| `coverUrl` | string | 封面 URL 或 data URL（可选） |
+| `sourceId` | string | 音源标识，如 `meting::https://…`（可选） |
+| `platform` | string | 平台，如 `netease`、`local`（可选） |
+| `metaJson` | string | 在线播放所需的原始元数据 JSON 字符串（可选） |
+
+#### `recent.json`
+
+对象数组，每项为一条最近播放记录（`RecentSong`），字段与收藏基本相同，另增：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `playedAt` | string (RFC3339) | 最近一次开始播放的时间 |
+
+#### `playlists.json`
+
+对象数组，每项为一个自建歌单（`UserPlaylist`）：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | 歌单唯一 ID |
+| `name` | string | 歌单名称 |
+| `createdAt` | string (RFC3339) | 创建时间 |
+| `songs` | array | 歌单内曲目列表，元素结构与 `favorites.json` 相同 |
+
+#### `player-settings.json`
+
+单个对象（`PlayerSettings`），保存播放器与详情页 UI 偏好：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `volume` | number | 音量 0–100 |
+| `muted` | boolean | 是否静音 |
+| `repeatMode` | string | 循环模式：`off` / `all` / `one` |
+| `shuffled` | boolean | 是否开启随机播放 |
+| `waveformSpread` | string | 频谱展开方向：`center-out` / `right-left` |
+| `detailHideLyrics` | boolean | 详情页是否隐藏歌词 |
+| `detailHideVisual` | boolean | 详情页是否隐藏频谱 |
+| `detailCoverShape` | string | 封面形状：`round` / `square` |
+| `detailCoverSpin` | boolean | 播放时封面是否旋转 |
+| `detailHidePlayerBar` | boolean | 详情页是否隐藏底部播放条 |
+
+#### `meting-settings.json`
+
+单个对象（`MetingSettings`），Meting API 节点配置：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `urls` | string[] | 已添加的 Meting API 根地址列表 |
+| `activeUrl` | string | 当前使用的节点地址 |
+| `platform` | string | 搜索平台，目前固定为 `netease`（网易云） |
+
+#### `local-folders.json`
+
+单个对象，记录用户添加的本地音乐目录：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `paths` | string[] | 已添加的文件夹绝对路径列表 |
+| `aliases` | object | 可选，键为文件夹路径、值为用户自定义显示名称 |
+
+扫描结果本身**不**存在此文件中，而是写入 `local-library.db`。
+
+### SQLite：`local-library.db`
+
+由 `music/local/db.go` 管理，启用 WAL 模式（`journal_mode=WAL`），单连接写入。
+
+#### 表 `scan_entries`
+
+本地音频文件扫描缓存，按文件路径索引。文件未修改时可跳过重复解析。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| `path` | TEXT (PK) | 音频文件绝对路径 |
+| `mod_time_unix` | INTEGER | 文件最后修改时间（Unix 秒），用于判断是否需要重新扫描 |
+| `song_json` | TEXT | `LocalSong` 对象的 JSON 字符串 |
+
+`song_json` 内字段（`LocalSong`）：
+
+| 字段 | 说明 |
+|------|------|
+| `id` | 与 `filePath` 相同 |
+| `title` | 从 ID3/Vorbis 等标签读取，缺省为文件名 |
+| `artist` | 艺术家，缺省为「未知艺术家」 |
+| `album` | 专辑（可选） |
+| `duration` | 格式化时长字符串 |
+| `filePath` | 文件绝对路径 |
+| `format` | 扩展名（如 `.mp3`、`.flac`） |
+| `size` | 人类可读的文件大小 |
+
+列表接口返回的 `LocalSong` **不含**封面与歌词大字段；这两项按需从 `song_extras` 加载。
+
+#### 表 `song_extras`
+
+按文件路径存储体积较大的扩展元数据，与 `scan_entries` 一一对应（同一路径）。
+
+| 列 | 类型 | 说明 |
+|----|------|------|
+| `path` | TEXT (PK) | 音频文件绝对路径 |
+| `cover_key` | TEXT | 封面哈希键（SHA-256 前 12 字节 hex），指向 `local-covers/` 中的图片文件；多首歌曲共用相同封面时会复用同一 key |
+| `lyric` | TEXT | 从音频文件内嵌标签读取的歌词文本（LRC 或纯文本），缺省为空字符串 |
+
+### 目录：`local-covers/`
+
+从内嵌专辑封面提取的二进制图片，以 `{cover_key}{扩展名}` 命名（扩展名由 MIME 推断，常见 `.jpg` / `.png`）。`cover_key` 由封面 data URL 的 SHA-256 哈希生成，相同封面只存一份，节省空间。
+
+扫描时不再使用的旧路径会从 `scan_entries` / `song_extras` 中清理；未被任何曲目引用的封面文件也会被 prune。
 
 ## Go API（Wails 绑定）
 

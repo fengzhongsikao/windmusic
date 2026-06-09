@@ -8,6 +8,8 @@ export function AddMetingURL(arg1:string):Promise<void>;
 
 export function AddPlaylistSong(arg1:string,arg2:music.FavoriteSong):Promise<void>;
 
+export function ClearLocalLibraryCache():Promise<void>;
+
 export function ClearRecent():Promise<void>;
 
 export function CreatePlaylist(arg1:string):Promise<music.UserPlaylist>;

@@ -6,12 +6,14 @@
     removeMetingURL,
     setActiveMetingURL,
   } from '@/stores/sources/meting.svelte';
-  import { GetSourceDataDir } from '../../../wailsjs/go/main/App';
+  import { ClearLocalLibraryCache, GetSourceDataDir } from '../../../wailsjs/go/main/App';
   let dataDir = $state('');
   let message = $state('');
   let error = $state('');
   let draftURL = $state('');
   let saving = $state(false);
+  let showClearCacheDialog = $state(false);
+  let clearingCache = $state(false);
 
   const sources = $derived(metingSettings.urls);
   const activeURL = $derived(metingSettings.activeUrl);
@@ -70,6 +72,22 @@
       error = errorMessage(err);
     } finally {
       saving = false;
+    }
+  }
+
+  async function confirmClearLocalCache() {
+    if (clearingCache) return;
+    clearingCache = true;
+    try {
+      await ClearLocalLibraryCache();
+      showClearCacheDialog = false;
+      error = '';
+      message = '本地扫描缓存已清除，正在重新扫描';
+    } catch (err) {
+      error = errorMessage(err);
+      message = '';
+    } finally {
+      clearingCache = false;
     }
   }
 </script>
@@ -144,7 +162,45 @@
       <p class="feedback error">{error}</p>
     {/if}
   </section>
+
+  <section class="panel">
+    <h3 class="panel-title">本地音乐缓存</h3>
+    <p class="hint">
+      清除 <code>local-library.db</code> 中的扫描结果与封面缓存（<code>local-covers/</code>）。已添加的音乐文件夹不会受影响，清除后将自动重新扫描。
+    </p>
+    <button
+      type="button"
+      class="btn clear-cache-btn danger"
+      disabled={saving || clearingCache}
+      onclick={() => (showClearCacheDialog = true)}
+    >
+      <Trash2 size={16} />
+      清除本地扫描缓存
+    </button>
+  </section>
 </div>
+
+{#if showClearCacheDialog}
+  <div class="dialog-backdrop" role="presentation">
+    <div class="alert-dialog" role="alertdialog" aria-modal="true" aria-labelledby="clear-cache-title">
+      <h3 id="clear-cache-title">清除本地扫描缓存？</h3>
+      <p>
+        将清空 local-library.db 中的扫描记录、封面键与歌词缓存，并删除 local-covers 目录下的封面文件。此操作不可恢复，清除后会重新扫描已添加的文件夹。
+      </p>
+      <div class="dialog-actions">
+        <button type="button" class="btn action-btn" onclick={() => (showClearCacheDialog = false)}>取消</button>
+        <button
+          type="button"
+          class="btn action-btn danger"
+          disabled={clearingCache}
+          onclick={() => void confirmClearLocalCache()}
+        >
+          {clearingCache ? '清除中…' : '确定清除'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .settings-page {
@@ -170,6 +226,10 @@
     border-radius: 12px;
     padding: 20px;
     background: #fafafa;
+  }
+
+  .panel + .panel {
+    margin-top: 16px;
   }
 
   .panel-title {
@@ -308,5 +368,83 @@
   .feedback.error {
     background: rgba(239, 68, 68, 0.12);
     color: #b91c1c;
+  }
+
+  .hint code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.05);
+    padding: 1px 4px;
+    border-radius: 4px;
+  }
+
+  .clear-cache-btn {
+    padding: 8px 14px;
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+  }
+
+  .clear-cache-btn:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  .clear-cache-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    padding: 16px;
+  }
+
+  .alert-dialog {
+    width: min(420px, 100%);
+    border-radius: 14px;
+    background: #fff;
+    padding: 18px;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+  }
+
+  .alert-dialog h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #111827;
+  }
+
+  .alert-dialog p {
+    margin: 8px 0 0;
+    color: #4b5563;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .dialog-actions {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .dialog-actions .action-btn {
+    padding: 8px 14px;
+    background: #f3f4f6;
+    color: #374151;
+  }
+
+  .dialog-actions .action-btn.danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: #dc2626;
+  }
+
+  .dialog-actions .action-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>
