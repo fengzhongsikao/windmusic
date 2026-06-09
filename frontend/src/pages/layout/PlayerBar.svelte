@@ -28,7 +28,7 @@
   } from '@/lib/library/localMusic';
   import { favoritesState } from '@/stores/library/favorites.svelte';
   import { localLibrary } from '@/stores/library/localLibrary.svelte';
-  import defaultCover from '@/assets/images/default.jpg';
+  import { defaultCover, resolvePlayerDefaultCover } from '@/lib/playback/playerDefaultCovers';
   import {
     audioCurrentTime,
     audioDuration,
@@ -43,7 +43,7 @@
   let barImmersive = $derived(player.viewMode === 'immersive');
   let barCoverByPath = $state<Record<string, string>>({});
   let displayedCover = $state('');
-  const hasBarCover = $derived(displayedCover !== '' && displayedCover !== defaultCover);
+  const hasBarCover = $derived(displayedCover !== '');
 
   let currentTime = $derived($audioCurrentTime);
   let duration = $derived($audioDuration);
@@ -161,6 +161,7 @@
   $effect(() => {
     const track = player.currentSong;
     const path = localPathFromPlayerTrack(track);
+    const fallbackCover = resolvePlayerDefaultCover(track);
 
     if (path && !barCoverByPath[path] && !localLibrary.coverByPath[path]) {
       void fetchLocalSongCovers([path]).then((batch) => {
@@ -188,12 +189,15 @@
     }
 
     let cancelled = false;
-    displayedCover = '';
+    displayedCover = path ? fallbackCover : '';
 
     void (async () => {
       const resolved = await fetchCoverUrl(track);
       if (cancelled) return;
-      if (!resolved || resolved === defaultCover) {
+      if (!resolved || resolved === fallbackCover) {
+        if (path) {
+          displayedCover = fallbackCover;
+        }
         return;
       }
 
@@ -207,7 +211,9 @@
         }
       };
       img.onerror = () => {
-        if (!cancelled) displayedCover = '';
+        if (!cancelled) {
+          displayedCover = path ? fallbackCover : '';
+        }
       };
       img.src = resolved;
     })();

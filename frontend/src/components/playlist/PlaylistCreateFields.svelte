@@ -53,6 +53,9 @@
     type="text"
     maxlength={40}
     placeholder="输入歌单名称"
+    autocapitalize="off"
+    autocomplete="off"
+    spellcheck={false}
     bind:value={name}
     disabled={saving}
     onkeydown={handleKeydown}
@@ -73,6 +76,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 8px 12px 12px;
+    text-transform: none;
   }
 
   .input {
@@ -84,6 +88,7 @@
     color: #333;
     background: #fafafa;
     outline: none;
+    text-transform: none;
   }
 
   .input:focus {

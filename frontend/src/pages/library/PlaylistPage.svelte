@@ -23,6 +23,7 @@
     localPathFromStoredSong,
     storedSongToPlayerTrack,
   } from '@/lib/library/localMusic';
+  import { localDefaultCover } from '@/lib/playback/playerDefaultCovers';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { playlistsState, refreshPlaylistsFromBackend } from '@/stores/library/playlistsStore.svelte';
   import { error as toastError } from '@/stores/ui/toast';
@@ -53,9 +54,9 @@
     }
     const path = localPathFromStoredSong(song);
     if (path) {
-      return coverByPath[path]?.trim() || undefined;
+      return coverByPath[path]?.trim() || localDefaultCover;
     }
-    return undefined;
+    return localDefaultCover;
   }
 
   const tracks = $derived<TrackItem[]>(

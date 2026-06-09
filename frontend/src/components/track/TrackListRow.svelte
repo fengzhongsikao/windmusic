@@ -5,6 +5,7 @@
   import type { PlayerTrack } from '@/stores/playback/player.svelte';
   import { player } from '@/stores/playback/player.svelte';
   import { localLibrary } from '@/stores/library/localLibrary.svelte';
+  import { localDefaultCover } from '@/lib/playback/playerDefaultCovers';
 
   interface Props {
     track: TrackItem;
@@ -79,6 +80,7 @@
           return fromStore;
         }
       }
+      return localDefaultCover;
     }
     return '';
   });

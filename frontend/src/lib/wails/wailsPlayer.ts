@@ -16,7 +16,7 @@ import {
 } from '../../../wailsjs/go/main/App';
 import { music } from '../../../wailsjs/go/models';
 import type { PlayerTrack } from '@/stores/playback/player.svelte';
-import defaultCover from '@/assets/images/default.jpg';
+import { defaultCover, localDefaultCover } from '@/lib/playback/playerDefaultCovers';
 import { fetchLocalSongExtras, isLocalStoredSong, LOCAL_PLATFORM, localPathFromMetaJson } from '@/lib/library/localMusic';
 import { getMetingURL, metingSourceId } from '@/stores/sources/meting.svelte';
 import {
@@ -111,9 +111,9 @@ async function fetchCoverUrlUncached(track: PlayerTrack): Promise<string> {
     const filePath = ctx.localPath?.trim() || localPathFromMetaJson(ctx.metaJson) || String(track.id ?? '');
     if (filePath) {
       const { coverData } = await fetchLocalSongExtras(filePath);
-      return coverData || defaultCover;
+      return coverData || localDefaultCover;
     }
-    return defaultCover;
+    return localDefaultCover;
   }
 
   if (!ctx.sourceId || !ctx.metaJson) {

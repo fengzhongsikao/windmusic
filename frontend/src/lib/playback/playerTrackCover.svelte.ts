@@ -8,9 +8,13 @@ import {
 } from '@/lib/library/localMusic';
 import { localLibrary, applyLocalCoverForPath } from '@/stores/library/localLibrary.svelte';
 import { fetchCoverUrl } from '@/lib/wails/wailsPlayer';
-import defaultCover from '@/assets/images/default.jpg';
+import {
+  defaultCover,
+  resolvePlayerDefaultCover,
+} from '@/lib/playback/playerDefaultCovers';
 
 export { defaultCover as playerDefaultCover };
+export { localDefaultCover as playerLocalDefaultCover, resolvePlayerDefaultCover } from '@/lib/playback/playerDefaultCovers';
 
 /** 订阅当前曲目封面（同步 local 缓存 + 异步拉取），切歌时立即重置为默认图。 */
 export function bindPlayerTrackCover(getTrack: () => PlayerTrack): {
@@ -23,12 +27,13 @@ export function bindPlayerTrackCover(getTrack: () => PlayerTrack): {
     trackPlaybackKey(track);
 
     const path = localPathFromPlayerTrack(track);
+    const fallbackCover = resolvePlayerDefaultCover(track);
     if (path) {
       void localLibrary.coverTickByPath[path];
     }
 
     let cancelled = false;
-    displayedCover = defaultCover;
+    displayedCover = fallbackCover;
 
     if (path && !localLibrary.coverByPath[path]) {
       void fetchLocalSongCovers([path]).then((batch) => {
@@ -59,8 +64,8 @@ export function bindPlayerTrackCover(getTrack: () => PlayerTrack): {
       if (cancelled) {
         return;
       }
-      if (!resolved || resolved === defaultCover) {
-        displayedCover = defaultCover;
+      if (!resolved || resolved === fallbackCover) {
+        displayedCover = fallbackCover;
         return;
       }
 
@@ -72,7 +77,7 @@ export function bindPlayerTrackCover(getTrack: () => PlayerTrack): {
       };
       img.onerror = () => {
         if (!cancelled) {
-          displayedCover = defaultCover;
+          displayedCover = fallbackCover;
         }
       };
       img.src = resolved;

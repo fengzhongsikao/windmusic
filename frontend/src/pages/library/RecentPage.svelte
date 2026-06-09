@@ -11,6 +11,7 @@
     localPathFromStoredSong,
     storedSongToPlayerTrack,
   } from '@/lib/library/localMusic';
+  import { localDefaultCover } from '@/lib/playback/playerDefaultCovers';
   import { player, playAllTracks, togglePlayByTrack, isCurrentTrack } from '@/stores/playback/player.svelte';
   import { recentState } from '@/stores/library/recent.svelte';
 
@@ -52,9 +53,9 @@
     }
     const path = localPathFromStoredSong(song);
     if (path) {
-      return coverByPath[path]?.trim() ?? '';
+      return coverByPath[path]?.trim() || localDefaultCover;
     }
-    return '';
+    return localDefaultCover;
   }
 
   $effect(() => {

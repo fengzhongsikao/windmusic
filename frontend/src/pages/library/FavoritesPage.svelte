@@ -10,6 +10,7 @@
   import type { FavoriteSong } from '@/lib/wails/wailsPlayer';
   import PlayAllButton from '@/components/track/PlayAllButton.svelte';
   import { storedSongToPlayerTrack, fetchLocalSongCovers, localPathFromStoredSong } from '@/lib/library/localMusic';
+  import { localDefaultCover } from '@/lib/playback/playerDefaultCovers';
   import { player, playAllTracks, togglePlayByTrack } from '@/stores/playback/player.svelte';
   import { favoritesState, refreshFavoritesFromBackend } from '@/stores/library/favorites.svelte';
 
@@ -24,6 +25,18 @@
   const favorites = $derived(favoritesState.items);
   const loading = $derived(!favoritesState.loaded);
 
+  function resolveFavoriteCover(song: FavoriteSong): string | undefined {
+    const stored = song.coverUrl?.trim();
+    if (stored) {
+      return stored;
+    }
+    const path = localPathFromStoredSong(song);
+    if (path) {
+      return coverByPath[path]?.trim() || localDefaultCover;
+    }
+    return localDefaultCover;
+  }
+
   const tracks = $derived<TrackItem[]>(
     favorites.map((song) => ({
       id: song.id,
@@ -32,7 +45,7 @@
       artist: song.artist,
       album: song.album ?? '',
       duration: song.duration?.trim() || '—',
-      coverUrl: song.coverUrl?.trim() || undefined,
+      coverUrl: resolveFavoriteCover(song),
     })),
   );
 
