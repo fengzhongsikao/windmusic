@@ -11,7 +11,7 @@
     "email": "boltjolt@qq.com"
   },
   "info": {
-    "productVersion": "1.0.4"
+    "productVersion": "1.0.5"
   },
   "preBuildHooks": {
     "*/*": "bash ../../scripts/sync-app-icon.sh"
