@@ -1,6 +1,7 @@
 import {
   GetLocalAudioStream,
   GetLocalFolderSongs,
+  GetLocalFolderSongsPage,
   GetLocalLibrarySnapshot,
   GetLocalLibraryTracksIndex,
   GetLocalSongCovers,
@@ -17,12 +18,19 @@ import { trackItemToPlayerTrack } from '@/lib/playback/playerTrack';
 
 export type LocalSong = music.LocalSong;
 
+export type LocalSongPage = {
+  songs: LocalSong[];
+  total: number;
+  offset: number;
+};
+
 export const LOCAL_PLATFORM = 'local';
 export const LOCAL_SOURCE_ID = 'local';
 
 export {
   PickLocalMusicFolder,
   GetLocalFolderSongs,
+  GetLocalFolderSongsPage,
   GetLocalLibrarySnapshot,
   GetLocalLibraryTracksIndex,
   RemoveLocalMusicFolder,

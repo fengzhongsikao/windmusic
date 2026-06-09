@@ -843,10 +843,58 @@ func (s *LocalLibraryStore) AllFolderSongs() (map[string][]models.LocalSong, err
 	return out, nil
 }
 
+const (
+	defaultLocalSongPageSize = 1500
+	maxLocalSongPageSize     = 3000
+)
+
+func normalizeLocalSongPage(offset, limit int) (int, int) {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = defaultLocalSongPageSize
+	}
+	if limit > maxLocalSongPageSize {
+		limit = maxLocalSongPageSize
+	}
+	return offset, limit
+}
+
 // ListCachedForFolder returns cached songs for one tab (models.LocalAllTabID = all folders).
 func (s *LocalLibraryStore) ListCachedForFolder(folderKey string) ([]models.LocalSong, error) {
-	if err := s.ensureScanCacheLoaded(); err != nil {
+	page, err := s.ListCachedForFolderPage(folderKey, 0, 0)
+	if err != nil {
 		return nil, err
+	}
+	if len(page.Songs) == 0 {
+		return []models.LocalSong{}, nil
+	}
+	if page.Total <= len(page.Songs) {
+		return page.Songs, nil
+	}
+	out := make([]models.LocalSong, 0, page.Total)
+	out = append(out, page.Songs...)
+	for offset := len(page.Songs); offset < page.Total; {
+		next, err := s.ListCachedForFolderPage(folderKey, offset, maxLocalSongPageSize)
+		if err != nil {
+			return nil, err
+		}
+		if len(next.Songs) == 0 {
+			break
+		}
+		out = append(out, next.Songs...)
+		offset += len(next.Songs)
+	}
+	return out, nil
+}
+
+// ListCachedForFolderPage returns one page of cached songs for a folder tab.
+func (s *LocalLibraryStore) ListCachedForFolderPage(folderKey string, offset, limit int) (models.LocalSongPage, error) {
+	offset, limit = normalizeLocalSongPage(offset, limit)
+
+	if err := s.ensureScanCacheLoaded(); err != nil {
+		return models.LocalSongPage{}, err
 	}
 
 	s.mu.RLock()
@@ -854,20 +902,33 @@ func (s *LocalLibraryStore) ListCachedForFolder(folderKey string) ([]models.Loca
 
 	folders, err := s.readFoldersLocked()
 	if err != nil {
-		return nil, err
+		return models.LocalSongPage{}, err
 	}
 	if len(folders) == 0 {
-		return []models.LocalSong{}, nil
+		return models.LocalSongPage{Offset: offset}, nil
 	}
 
 	s.ensureFolderSongsIndexLocked(folders, s.cache)
 	songs := s.folderSongsByKey[folderKey]
-	if len(songs) == 0 {
-		return []models.LocalSong{}, nil
+	total := len(songs)
+	if total == 0 || offset >= total {
+		return models.LocalSongPage{Total: total, Offset: offset}, nil
 	}
-	out := make([]models.LocalSong, len(songs))
-	copy(out, songs)
-	return out, nil
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	slice := songs[offset:end]
+	out := make([]models.LocalSong, len(slice))
+	for i, song := range slice {
+		out[i] = cloneLocalSongForList(song)
+	}
+	return models.LocalSongPage{
+		Songs:  out,
+		Total:  total,
+		Offset: offset,
+	}, nil
 }
 
 func fileInMusicFolders(filePath string, folders []string) bool {

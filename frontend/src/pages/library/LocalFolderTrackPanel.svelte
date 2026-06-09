@@ -48,9 +48,7 @@
     <TrackList
       {tracks}
       listId={listId}
-      incremental
-      initialBatch={100}
-      batchSize={100}
+      virtualAutoThreshold={500}
       activeId={displayActiveId}
       {onSelect}
       {resolvePlayerTrack}

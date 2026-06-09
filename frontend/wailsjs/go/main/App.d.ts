@@ -20,6 +20,8 @@ export function GetLocalAudioStream(arg1:string):Promise<string>;
 
 export function GetLocalFolderSongs(arg1:string):Promise<Array<music.LocalSong>>;
 
+export function GetLocalFolderSongsPage(arg1:string,arg2:number,arg3:number):Promise<music.LocalSongPage>;
+
 export function GetLocalLibrarySnapshot():Promise<music.LocalLibrarySnapshot>;
 
 export function GetLocalLibraryTracksIndex():Promise<Record<string, Array<music.LocalSong>>>;

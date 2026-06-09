@@ -590,6 +590,8 @@
   }
 
   .track-row-virtual {
+    display: block;
+    width: 100%;
     position: absolute;
     top: 0;
     left: 0;

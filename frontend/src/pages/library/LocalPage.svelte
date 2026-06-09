@@ -17,6 +17,7 @@
     LOCAL_ALL_TAB_ID,
     isLocalTabLoaded,
     isLocalTabLoading,
+    isLocalTabFullyLoaded,
     loadTabTracks,
     localLibrary,
     scanLocalLibrary,
@@ -41,6 +42,9 @@
 
   const folderAliases = $derived(localLibrary.folderAliases);
   const tracksIndexLoading = $derived(isLocalTabLoading(activeFolderTab));
+  const tracksLoadingMore = $derived(
+    isLocalTabLoaded(activeFolderTab) && !isLocalTabFullyLoaded(activeFolderTab),
+  );
 
   const folders = $derived(localLibrary.folders);
   const scanning = $derived(localLibrary.scanning);
@@ -246,7 +250,7 @@
         <FolderOpen size={16} />
         添加文件夹
       </button>
-      {#if activeTracks.length > 0}
+      {#if activeTracks.length > 0 && isLocalTabFullyLoaded(activeFolderTab)}
         <PlayAllButton onclick={handlePlayAll} disabled={scanning} />
       {/if}
     </div>
@@ -375,6 +379,11 @@
         {scanning ? '正在扫描音乐文件…' : tracksIndexLoading ? '正在加载歌曲…' : '正在加载…'}
       </p>
     {:else if activeTabMeta}
+      {#if tracksLoadingMore}
+        <p class="load-more-hint" role="status">
+          已加载 {activeTracks.length.toLocaleString()} / {(activeTabMeta.count || activeTracks.length).toLocaleString()} 首…
+        </p>
+      {/if}
       <LocalFolderTrackPanel
         tabId={activeTabMeta.id}
         tabLabel={activeTabMeta.label}
@@ -494,6 +503,12 @@
     color: #999;
     font-size: 14px;
     margin: 0;
+  }
+
+  .load-more-hint {
+    margin: 0 0 12px;
+    color: #888;
+    font-size: 13px;
   }
 
   .folder-grid {

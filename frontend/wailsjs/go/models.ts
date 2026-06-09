@@ -166,6 +166,40 @@ export namespace music {
 	        this.lyric = source["lyric"];
 	    }
 	}
+	export class LocalSongPage {
+	    songs: LocalSong[];
+	    total: number;
+	    offset: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new LocalSongPage(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.songs = this.convertValues(source["songs"], LocalSong);
+	        this.total = source["total"];
+	        this.offset = source["offset"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
 	export class LyricInfo {
 	    lyric: string;
 	    tlyric?: string;

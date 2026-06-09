@@ -1,11 +1,12 @@
 import {
   fetchLocalSongCovers,
-  GetLocalFolderSongs,
+  GetLocalFolderSongsPage,
   GetLocalLibrarySnapshot,
   ScanLocalLibrary,
   localSongToTrackItem,
   type LocalSong,
 } from '@/lib/library/localMusic';
+import { error as toastError, success as toastSuccess } from '@/stores/ui/toast';
 import type { TrackItem } from '@/lib/playback/track';
 import { EventsOn } from '../../../wailsjs/runtime/runtime';
 import { music } from '../../../wailsjs/go/models';
@@ -30,9 +31,11 @@ let coverFlushScheduled = false;
 let localPageActive = false;
 let activeTabId = LOCAL_ALL_TAB_ID;
 let wasScanning = false;
+let scanStart = 0;
 
 const COVER_CHUNK = 40;
 const COVER_FLUSH_PER_FRAME = 12;
+const SONG_PAGE_SIZE = 1500;
 
 function isTabLoaded(tabId: string): boolean {
   return tabId in localLibrary.loadedTabIds;
@@ -264,12 +267,12 @@ function snapshotMetaKey(snapshot: LocalLibrarySnapshot): string {
   return `${foldersKey}\x00${countsPart}`;
 }
 
-function buildTracksFromSongs(songs: LocalSong[]): TrackItem[] {
+function buildTracksFromSongs(songs: LocalSong[], songById: Map<string, LocalSong>): TrackItem[] {
   const tracks: TrackItem[] = [];
   const trackByPath = new Map<string, TrackItem>();
 
   for (const song of songs) {
-    localLibrary.songById.set(String(song.id), song);
+    songById.set(String(song.id), song);
     let item = trackByPath.get(song.filePath);
     if (!item) {
       item = localSongToTrackItem(song);
@@ -281,8 +284,40 @@ function buildTracksFromSongs(songs: LocalSong[]): TrackItem[] {
   return tracks;
 }
 
+function appendTracksFromSongs(
+  songs: LocalSong[],
+  tracks: TrackItem[],
+  songById: Map<string, LocalSong>,
+): TrackItem[] {
+  if (songs.length === 0) {
+    return tracks;
+  }
+  const nextTracks = tracks.slice();
+  const trackByPath = new Map<string, TrackItem>();
+  for (const track of nextTracks) {
+    const path = String(track.listKey ?? track.id).trim();
+    if (path) {
+      trackByPath.set(path, track);
+    }
+  }
+
+  for (const song of songs) {
+    songById.set(String(song.id), song);
+    let item = trackByPath.get(song.filePath);
+    if (!item) {
+      item = localSongToTrackItem(song);
+      trackByPath.set(song.filePath, item);
+    }
+    nextTracks.push(item);
+  }
+
+  return nextTracks;
+}
+
 function applyTabTracks(tabId: string, songs: LocalSong[]) {
-  localLibrary.tracksByTab[tabId] = buildTracksFromSongs(songs ?? []);
+  const songById = new Map(localLibrary.songById);
+  localLibrary.tracksByTab[tabId] = buildTracksFromSongs(songs ?? [], songById);
+  localLibrary.songById = songById;
   localLibrary.loadedTabIds[tabId] = true;
   localLibrary.revision += 1;
 }
@@ -328,7 +363,7 @@ function tabCountsHaveSongs(tabId: string): boolean {
   return (localLibrary.folderCounts[tabId] ?? 0) > 0;
 }
 
-/** 按 Tab 懒加载曲目（一次 IPC 只拉当前文件夹） */
+/** 按 Tab 懒加载曲目（分页 IPC，避免大库一次性传输阻塞） */
 export async function loadTabTracks(tabId: string): Promise<void> {
   if (isTabLoaded(tabId)) {
     ensureCoversForCurrentView();
@@ -339,15 +374,44 @@ export async function loadTabTracks(tabId: string): Promise<void> {
   localLibrary.loadingTabId = tabId;
 
   try {
-    const songs = (await GetLocalFolderSongs(tabId)) as LocalSong[];
-    if (tabLoadToken !== token) {
-      return;
+    let offset = 0;
+    let total = 0;
+    let tracks: TrackItem[] = [];
+    const songById = new Map(localLibrary.songById);
+
+    while (true) {
+      const page = (await GetLocalFolderSongsPage(tabId, offset, SONG_PAGE_SIZE)) as {
+        songs?: LocalSong[];
+        total?: number;
+        offset?: number;
+      };
+      if (tabLoadToken !== token) {
+        return;
+      }
+
+      const chunk = page.songs ?? [];
+      total = page.total ?? chunk.length;
+      tracks = offset === 0 ? buildTracksFromSongs(chunk, songById) : appendTracksFromSongs(chunk, tracks, songById);
+      localLibrary.tracksByTab[tabId] = tracks;
+      localLibrary.songById = songById;
+      localLibrary.revision += 1;
+
+      if (offset === 0) {
+        localLibrary.loadedTabIds[tabId] = true;
+        ensureCoversForCurrentView();
+      }
+
+      offset += chunk.length;
+      if (chunk.length === 0 || offset >= total) {
+        break;
+      }
+      await yieldToMain();
     }
-    applyTabTracks(tabId, songs ?? []);
-    ensureCoversForCurrentView();
-  } catch {
+  } catch (err) {
     if (tabLoadToken === token) {
       applyTabTracks(tabId, []);
+      const message = err instanceof Error ? err.message : String(err);
+      toastError(message ? `加载本地歌曲失败：${message}` : '加载本地歌曲失败');
     }
   } finally {
     if (tabLoadToken === token) {
@@ -369,6 +433,15 @@ export function isLocalTabLoading(tabId: string): boolean {
   return localLibrary.loadingTabId === tabId;
 }
 
+export function isLocalTabFullyLoaded(tabId: string): boolean {
+  if (!isTabLoaded(tabId)) {
+    return false;
+  }
+  const expected = localLibrary.folderCounts[tabId] ?? localLibrary.tracksByTab[tabId]?.length ?? 0;
+  const loaded = localLibrary.tracksByTab[tabId]?.length ?? 0;
+  return loaded >= expected;
+}
+
 export function localTabHasTracks(tabId: string): boolean {
   if (isTabLoaded(tabId)) {
     return (localLibrary.tracksByTab[tabId]?.length ?? 0) > 0;
@@ -387,10 +460,20 @@ export function initLocalLibrarySync(): () => void {
   });
   const offScanning = EventsOn(LOCAL_LIBRARY_SCANNING_EVENT, (scanning: boolean) => {
     const nextScanning = Boolean(scanning);
-    if (wasScanning && !nextScanning && localLibrary.loaded) {
-      invalidateTracksIndex();
-      if (localPageActive) {
-        void loadTabTracks(activeTabId);
+    if (!wasScanning && nextScanning) {
+      scanStart = Date.now();
+    }
+    if (wasScanning && !nextScanning) {
+      if (scanStart > 0) {
+        const seconds = (Date.now() - scanStart) / 1000;
+        toastSuccess(`本地音乐扫描完成，用时 ${seconds.toFixed(1)} 秒`);
+        scanStart = 0;
+      }
+      if (localLibrary.loaded) {
+        invalidateTracksIndex();
+        if (localPageActive) {
+          void loadTabTracks(activeTabId);
+        }
       }
     }
     wasScanning = nextScanning;

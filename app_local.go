@@ -3,6 +3,8 @@ package main
 import (
 	models "windmusic/internal/music"
 	localmusic "windmusic/music/local"
+
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 func (a *App) startLocalLibraryScan() {
@@ -22,7 +24,9 @@ func (a *App) runLocalLibraryScan() {
 	a.emitLocalLibraryScanning(true)
 	defer a.emitLocalLibraryScanning(false)
 
-	_, _ = a.local.Scan()
+	if _, err := a.local.Scan(); err != nil {
+		runtime.LogErrorf(a.ctx, "local library scan failed: %v", err)
+	}
 	a.emitLocalLibrarySnapshot()
 
 	a.localScanMu.Lock()
@@ -100,6 +104,10 @@ func (a *App) GetLocalFolderSongs(folderKey string) ([]models.LocalSong, error) 
 		return []models.LocalSong{}, nil
 	}
 	return songs, nil
+}
+
+func (a *App) GetLocalFolderSongsPage(folderKey string, offset, limit int) (models.LocalSongPage, error) {
+	return a.local.ListCachedForFolderPage(folderKey, offset, limit)
 }
 
 func (a *App) GetLocalLibraryTracksIndex() (map[string][]models.LocalSong, error) {

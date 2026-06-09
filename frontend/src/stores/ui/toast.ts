@@ -1,34 +1,17 @@
-import { writable } from 'svelte/store';
+import { createToaster } from '@skeletonlabs/skeleton-svelte';
 
-export type ToastType = 'error' | 'success' | 'info';
-
-export type ToastItem = {
-  id: number;
-  message: string;
-  type: ToastType;
-};
-
-const toastsStore = writable<ToastItem[]>([]);
-let idSeed = 0;
-
-export const toasts = toastsStore;
-
-function push(message: string, type: ToastType, timeoutMs = 2200) {
-  const id = ++idSeed;
-  toastsStore.update((items) => [...items, { id, message, type }]);
-  if (timeoutMs > 0) {
-    window.setTimeout(() => dismiss(id), timeoutMs);
-  }
-}
+export const toaster = createToaster({
+  placement: 'top',
+});
 
 export function error(message: string) {
-  push(message, 'error');
+  toaster.error({ title: message });
 }
 
 export function success(message: string) {
-  push(message, 'success');
+  toaster.success({ title: message });
 }
 
-export function dismiss(id: number) {
-  toastsStore.update((items) => items.filter((item) => item.id !== id));
+export function info(message: string) {
+  toaster.info({ title: message });
 }

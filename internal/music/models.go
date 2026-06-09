@@ -126,6 +126,13 @@ type LocalCoverBatch struct {
 // LocalAllTabID is the frontend tab key for the combined library view.
 const LocalAllTabID = "all"
 
+// LocalSongPage is a paginated slice of cached local songs for one folder tab.
+type LocalSongPage struct {
+	Songs  []LocalSong `json:"songs"`
+	Total  int         `json:"total"`
+	Offset int         `json:"offset"`
+}
+
 // LocalLibrarySnapshot is lightweight library metadata pushed to the frontend.
 // Per-folder song lists are loaded on demand via GetLocalFolderSongs.
 type LocalLibrarySnapshot struct {

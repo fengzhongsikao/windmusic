@@ -38,6 +38,10 @@ export function GetLocalFolderSongs(arg1) {
   return window['go']['main']['App']['GetLocalFolderSongs'](arg1);
 }
 
+export function GetLocalFolderSongsPage(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetLocalFolderSongsPage'](arg1, arg2, arg3);
+}
+
 export function GetLocalLibrarySnapshot() {
   return window['go']['main']['App']['GetLocalLibrarySnapshot']();
 }
